@@ -8,11 +8,12 @@ A small Flask + React R&D prototype exploring **process-oriented assignment desi
 
 ## Why This Problem
 
-Rather than building another Q&A chatbot or document summarizer, P-MFA Studio focuses on a harder assessment problem: when generative AI can produce polished final essays or code, grading solely on a single end-of-course submission loses visibility into authentic learning.
+Rather than building another Q&A chatbot or document summarizer, P-MFA Studio tackles a harder assessment problem: when generative AI can produce polished final essays or code, grading solely on a single end-of-course submission loses visibility into authentic learning.
 
-The app models a two-sided workflow:
-1. **Lecturer Setup & Design Review:** Audits an assignment against stated learning outcomes and the six P-MFA dimensions (*Knowledge, Outputs, Application, Process Continuity, Self-Evaluation, Situated Understanding*), displaying an explicit `evidence_basis` for each observation and drafting 3 editable progressive checkpoints. Evidence-basis descriptions are model-generated explanations based on the supplied assignment and learning outcomes. They are not source-verified quotations or proof of student competence. Instructors must check these explanations against the original assignment materials and learning outcomes.
-3. **Simulated Student Preview:** Lets students select or propose an evidence format for a checkpoint, test a draft reflection, and experience **server-side policy-dependent behaviour** across Arene tiers (including deterministic AI lockout on Red, AI disclosure prompts on Blue/Yellow, and Socratic non-author coaching).
+The app models a three-step workflow:
+1. **Assignment (`1. Assignment`):** Lecturers enter an assignment's learning outcomes, task prompt, and **Arene AI Traffic Light** tier (*Blue, Green, Yellow, Red*), or load one of four discipline presets.
+2. **Review (`2. Review`):** Audits constructive alignment across the six P-MFA dimensions (*Knowledge, Outputs, Application, Process Continuity, Self-Evaluation, Situated Understanding*), flags what is clearly covered vs. missing in the prompt, and drafts **3 editable checkpoints** plus an editable student AI rule for Markdown export.
+3. **Student View (`3. Student View`):** Lets users test a checkpoint check-in as a student—choosing how to evidence their work and seeing **server-enforced policy behavior** across Arene tiers (an AI Coach that won't write the deliverable on Blue/Yellow/Green, and deterministic server-side AI lockout on Red).
 
 ---
 
@@ -38,7 +39,7 @@ cp backend/.env.example backend/.env
 # Add your GROQ_API_KEY to backend/.env (or set LLM_PROVIDER=ollama for local inference)
 ```
 
-Start Flask (using the prebuilt `backend/static_dist/` bundle):
+Start Flask from the root folder (using the prebuilt `backend/static_dist/` bundle):
 ```bash
 python -m backend.app
 # or: flask --app backend.app run
@@ -61,6 +62,8 @@ npm run dev     # proxies /api -> http://127.0.0.1:5000
 ### 3. Automated Tests
 ```bash
 python -m pytest -v
+
+cd frontend && npm test
 ```
 
 ---
@@ -83,9 +86,10 @@ future evaluation with lecturers and students.
 
 ## Privacy & Limitations
 
+- **Human review required:** AI-generated observations and prompt-evidence pointers are design suggestions, not verified proof of learning outcomes or student competence. Final pedagogical and grading judgment always rests with the lecturer.
 - **Use synthetic examples only.** Do not enter real student work, names, or sensitive personal data. `pii_guard.py` is best-effort regex masking—**not** full anonymisation or GDPR compliance—and does not detect arbitrary names, addresses, or contextual sensitive facts.
 - **Policy enforcement boundaries:** Only the **Red** tier deterministically blocks LLM calls on the backend. Course-specific natural-language rules (`custom_ai_rules`) and the Socratic non-writing constraint rely on prompt-guided model behaviour and cannot guarantee refusal against adversarial inputs.
-- **Prototype scope:** No database, authentication, or Moodle integration. The Student Preview runs in-browser without saving or transmitting student drafts to instructors. Rate limiting (`SimpleRateLimiter`) is process-local for demo protection.
+- **Prototype scope:** No database, authentication, or Moodle integration. The Student View runs in-browser without saving or transmitting student drafts to instructors. Rate limiting (`SimpleRateLimiter`) is process-local for demo protection.
 
 ---
 

@@ -574,17 +574,17 @@ def run_student_checkin(
     if not tier_info["student_ai_enabled"]:
         return {
             "strengths": [
-                "AI coaching is disabled for this assignment because the Red (AI Prohibited) Arene tier is active."
+                "AI Coach is turned off for this assignment because the Red (No AI) rule is active."
             ],
             "probing_questions": [
-                "Self-check: Which specific learning outcome does your chosen evidence format demonstrate?",
-                "Self-check: What counter-argument or edge case could an examiner ask you to defend orally?",
+                "Which learning outcome does your chosen format clearly prove?",
+                "What counter-argument or edge case could a lecturer ask you to defend in person?",
             ],
             "evidence_coaching": (
-                f"Chosen format '{chosen_evidence_format or 'Self-proposed evidence'}' is shown here for your own self-review "
-                "(not saved or transmitted to an instructor in this prototype)."
+                f"Your chosen format ('{chosen_evidence_format or 'Custom format'}') is shown here for your own self-check—"
+                "it is not saved or sent to a lecturer in this demo."
             ),
-            "alignment_warning": "Red tier policy enforced server-side: independent competence must be demonstrated without AI assistance.",
+            "alignment_warning": "Red rule enforced by the server: you must complete and explain this work without AI help.",
             "policy_reminder": tier_info["rule"],
         }
 

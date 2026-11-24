@@ -413,7 +413,7 @@ select:focus {
 .privacy-foot {
   font-size: 0.78rem;
   color: var(--muted);
-  max-width: 640px;
+  flex: 1 1 320px;
 }
 
 /* Banners & Badges */
@@ -657,6 +657,17 @@ select:focus {
 }
 
 /* Student View */
+@media (min-width: 861px) {
+  .student-context-panel {
+    position: sticky;
+    top: 82px;
+  }
+}
+
+.textarea-compact {
+  min-height: 64px;
+}
+
 .student-grid {
   display: grid;
   grid-template-columns: 1fr 1.15fr;

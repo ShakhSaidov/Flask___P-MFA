@@ -1,4 +1,3 @@
-
 import React from "react";
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import {
@@ -102,7 +101,7 @@ describe("StudentPreview", () => {
     ).toBeInTheDocument();
 
     expect(
-      screen.getByLabelText("Checkpoint Draft or Reflection Note")
+      screen.getByLabelText("Your Progress Note")
     ).toHaveValue(
       "I compared two sources and documented why I selected one."
     );
@@ -134,13 +133,13 @@ describe("StudentPreview", () => {
 
     fireEvent.click(
       screen.getByRole("button", {
-        name: "Get Socratic Feedback",
+        name: "Ask Coach for Feedback",
       })
     );
 
     await waitFor(() => {
       expect(
-        screen.getByText("Guided Reflection (Prompt-Based)")
+        screen.getByText("Coach Mode · Won't Write for You")
       ).toBeInTheDocument();
     });
 
@@ -183,7 +182,7 @@ describe("StudentPreview", () => {
 
     fireEvent.click(
       screen.getByRole("button", {
-        name: "Show Independent Self-Check",
+        name: "Run Self-Check (No AI)",
       })
     );
 
@@ -198,12 +197,12 @@ describe("StudentPreview", () => {
     expect(requestBody.arene_tier).toBe("red");
 
     expect(
-      screen.getByText("Independent Self-Check")
+      screen.getByText("Self-Check Checklist")
     ).toBeInTheDocument();
 
     await waitFor(() => {
       expect(
-        screen.getByText("AI Disabled (Red Tier)")
+        screen.getByText("AI Off · Red Rule")
       ).toBeInTheDocument();
     });
   });
@@ -220,7 +219,7 @@ describe("StudentPreview", () => {
 
     fireEvent.click(
       screen.getByRole("button", {
-        name: "Get Socratic Feedback",
+        name: "Ask Coach for Feedback",
       })
     );
 
@@ -240,13 +239,13 @@ describe("StudentPreview", () => {
 
     fireEvent.click(
       screen.getByRole("button", {
-        name: "Get Socratic Feedback",
+        name: "Ask Coach for Feedback",
       })
     );
 
     expect(
       await screen.findByText(
-        "Network error contacting backend."
+        "Could not reach the server. Check that Flask is running."
       )
     ).toBeInTheDocument();
   });
@@ -255,7 +254,7 @@ describe("StudentPreview", () => {
     render(<StudentPreview {...makeProps()} />);
 
     fireEvent.change(
-      screen.getByLabelText("Select Checkpoint"),
+      screen.getByLabelText("Choose Checkpoint"),
       { target: { value: "1" } }
     );
 
@@ -274,7 +273,7 @@ describe("StudentPreview", () => {
 
     expect(
       screen.getByRole("button", {
-        name: "Get Socratic Feedback",
+        name: "Ask Coach for Feedback",
       })
     ).toBeDisabled();
 
@@ -300,7 +299,7 @@ describe("StudentPreview", () => {
 
     fireEvent.click(
       screen.getByRole("button", {
-        name: "Get Socratic Feedback",
+        name: "Ask Coach for Feedback",
       })
     );
 
@@ -309,7 +308,7 @@ describe("StudentPreview", () => {
     ).toBeInTheDocument();
 
     fireEvent.change(
-      screen.getByLabelText("Checkpoint Draft or Reflection Note"),
+      screen.getByLabelText("Your Progress Note"),
       { target: { value: "Updated reflection." } }
     );
 

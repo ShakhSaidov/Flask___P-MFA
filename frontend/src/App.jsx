@@ -3,10 +3,44 @@ import AssignmentForm from "./components/AssignmentForm.jsx";
 import AnalysisBoard from "./components/AnalysisBoard.jsx";
 import StudentPreview from "./components/StudentPreview.jsx";
 
+const FALLBACK_ARENE_TIERS = {
+  blue: {
+    label: "Blue — AI Required & Reported",
+    badge: "#1d4ed8",
+    student_ai_enabled: true,
+    requires_disclosure: true,
+    rule: "Students must use AI in the assignment and report how AI outputs were prompted, evaluated, and verified.",
+  },
+
+  green: {
+    label: "Green — AI Allowed (No Reporting Needed)",
+    badge: "#15803d",
+    student_ai_enabled: true,
+    requires_disclosure: false,
+    rule: "AI use is allowed within the assignment and course instructions. No AI-use report is required.",
+  },
+
+  yellow: {
+    label: "Yellow — AI Allowed Within Bounds & Reported",
+    badge: "#b45309",
+    student_ai_enabled: true,
+    requires_disclosure: true,
+    rule: "Students may use AI within teacher-defined boundaries and must document and reflect on its use. AI can never be the author.",
+  },
+
+  red: {
+    label: "Red — AI Prohibited",
+    badge: "#b91c1c",
+    student_ai_enabled: false,
+    requires_disclosure: false,
+    rule: "AI must not be used to create the assessed output. Any permitted preparatory use must follow the lecturer's course-specific instructions. This prototype disables its own AI-assisted student coaching under the Red tier. Assessment relies on staged process evidence and controlled or oral verification.",
+  },
+};
+
 export default function App() {
   const [samples, setSamples] = useState([]);
   const [activeSampleId, setActiveSampleId] = useState("");
-  const [areneTiers, setAreneTiers] = useState({});
+  const [areneTiers, setAreneTiers] = useState(FALLBACK_ARENE_TIERS);
   const [evidenceFormats, setEvidenceFormats] = useState([]);
   const [activeProvider, setActiveProvider] = useState("groq");
   const [step, setStep] = useState("setup"); // "setup" | "review" | "student"
@@ -37,7 +71,11 @@ export default function App() {
       })
       .then((data) => {
         setSamples(data.samples || []);
-        setAreneTiers(data.arene_tiers || {});
+        setAreneTiers(
+          data.arene_tiers && Object.keys(data.arene_tiers).length > 0
+            ? data.arene_tiers
+            : FALLBACK_ARENE_TIERS
+        );
         setEvidenceFormats(data.evidence_formats || []);
         if (data.active_provider) {
           setActiveProvider(data.active_provider);
@@ -56,8 +94,13 @@ export default function App() {
           setSampleAiDisclosure(first.sample_ai_disclosure || "");
         }
       })
-      .catch(() => setError("Could not load backend presets. Verify Flask is running."));
+      .catch(() => setError("Could not load sample presets. Check that Flask is running."));
   }, []);
+
+  const goToStep = (nextStep) => {
+    setError("");
+    setStep(nextStep);
+  };
 
   const handleUpdateForm = (updater) => {
     setForm((prev) =>
@@ -104,16 +147,16 @@ export default function App() {
       });
       const data = await resp.json();
       if (!resp.ok) {
-        setError(data.error || "Analysis failed.");
+        setError(data.error || "Could not analyze the assignment.");
       } else {
         setAnalysis(data.analysis);
         setAnalysisVersion((prev) => prev + 1);
         setIsAnalysisStale(false);
         setPiiMaskedCount(data.pii_masked_count || 0);
-        setStep("review");
+        goToStep("review");
       }
     } catch {
-      setError("Network error contacting Flask backend.");
+      setError("Could not reach the server. Check that Flask is running.");
     } finally {
       setLoading(false);
     }
@@ -160,7 +203,7 @@ export default function App() {
       });
       const data = await resp.json();
       if (!resp.ok) {
-        setError(data.error || "Export failed.");
+        setError(data.error || "Could not export the plan. Make sure all checkpoint fields are filled in.");
         return;
       }
       setExportedMarkdown(data.markdown);
@@ -175,7 +218,7 @@ export default function App() {
       link.remove();
       setTimeout(() => URL.revokeObjectURL(url), 1000);
     } catch {
-      setError("Network error exporting blueprint.");
+      setError("Could not reach the server to export your plan.");
     }
   };
 
@@ -187,34 +230,34 @@ export default function App() {
           <div className="brand">
             <div className="brand-title-row">
               <h1>P-MFA Studio</h1>
-              <span className="proto-tag">R&amp;D Prototype</span>
+              <span className="proto-tag">Metropolia R&amp;D Prototype</span>
             </div>
-            <p>Process-oriented assignment design inspired by Hämäläinen &amp; Leiviskä (2025)</p>
+            <p>Spot AI blind spots in assignments and build 3 progress checkpoints</p>
           </div>
 
           <nav className="stepper" aria-label="Workflow steps">
             <button
               type="button"
               className={`step-btn ${step === "setup" ? "active" : ""}`}
-              onClick={() => setStep("setup")}
+              onClick={() => goToStep("setup")}
             >
-              1. Setup
+              1. Assignment
             </button>
             <button
               type="button"
               className={`step-btn ${step === "review" ? "active" : ""}`}
               disabled={!analysis}
-              onClick={() => setStep("review")}
+              onClick={() => goToStep("review")}
             >
-              2. Design Review
+              2. Review
             </button>
             <button
               type="button"
               className={`step-btn ${step === "student" ? "active" : ""}`}
               disabled={!analysis || isAnalysisStale}
-              onClick={() => setStep("student")}
+              onClick={() => goToStep("student")}
             >
-              3. Student Preview
+              3. Student View
             </button>
           </nav>
         </div>
@@ -244,13 +287,13 @@ export default function App() {
             isAnalysisStale={isAnalysisStale}
             piiMaskedCount={piiMaskedCount}
             activeProvider={activeProvider}
-            onBackToSetup={() => setStep("setup")}
+            onBackToSetup={() => goToStep("setup")}
             onUpdateFactorCoverage={handleUpdateFactorCoverage}
             onUpdateCheckpoint={handleUpdateCheckpoint}
             onUpdateDisclosure={handleUpdateDisclosure}
             onExportMarkdown={handleExportMarkdown}
             exportedMarkdown={exportedMarkdown}
-            onOpenStudentPreview={() => setStep("student")}
+            onOpenStudentPreview={() => goToStep("student")}
           />
         )}
 
@@ -266,8 +309,8 @@ export default function App() {
               activeProvider={activeProvider}
               sampleStudentDraft={sampleStudentDraft}
               sampleAiDisclosure={sampleAiDisclosure}
-              onBackToReview={() => setStep("review")}
-              onBackToSetup={() => setStep("setup")}
+              onBackToReview={() => goToStep("review")}
+              onBackToSetup={() => goToStep("setup")}
             />
           </div>
         )}

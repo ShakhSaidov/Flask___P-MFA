@@ -62,7 +62,7 @@ vi.mock("./components/AnalysisBoard.jsx", () => ({
       <div>
         <h2>Design Review</h2>
         <button onClick={props.onOpenStudentPreview}>
-          Open Student Preview
+          Open Student View
         </button>
       </div>
     );
@@ -75,7 +75,7 @@ vi.mock("./components/StudentPreview.jsx", () => ({
 
     return (
       <div>
-        <h2>Student Preview</h2>
+        <h2>Student View</h2>
 
         <textarea
           aria-label="Student test draft"
@@ -143,7 +143,7 @@ describe("App workflow", () => {
     ).toHaveTextContent("none");
   });
 
-  it("preserves Student Preview state when navigating back to Review", async () => {
+  it("preserves Student View state when navigating back to Review", async () => {
     fetch.mockResolvedValueOnce(
       jsonResponse({
         analysis: {
@@ -175,7 +175,7 @@ describe("App workflow", () => {
 
     fireEvent.click(
       screen.getByRole("button", {
-        name: "Open Student Preview",
+        name: "Open Student View",
       })
     );
 
@@ -197,7 +197,7 @@ describe("App workflow", () => {
 
     fireEvent.click(
       screen.getByRole("button", {
-        name: "Open Student Preview",
+        name: "Open Student View",
       })
     );
 

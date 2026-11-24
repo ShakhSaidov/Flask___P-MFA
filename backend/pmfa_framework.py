@@ -52,14 +52,14 @@ ARENE_TIERS = {
         "badge": "#b91c1c",
         "student_ai_enabled": False,
         "requires_disclosure": False,
-        "rule": "AI must not be used to create the assessed output. Any permitted preparatory use must follow the lecturer's course-specific instructions. This prototype disables its own AI-assisted student coaching under the Red tier. Assessment relies on staged process evidence and controlled or oral verification.",
+        "rule": "AI must not be used to create graded work. This prototype turns off AI Coach feedback under the Red rule; assessment relies on your own process notes and independent or oral verification.",
     },
 }
 
 EVIDENCE_FORMAT_OPTIONS = [
-    "Annotated search & source-selection log",
-    "2-minute screen/voice walkthrough explaining decisions",
     "Versioned draft notes with self-critique comments",
+    "2-minute screen/voice walkthrough explaining decisions",
+    "Annotated search & source-selection log",
     "In-class / peer Q&A defense summary",
 ]
 
@@ -103,7 +103,7 @@ SAMPLE_ASSIGNMENTS = [
             "Submit a final Figma prototype link and a 1,000-word rationale at the end of the sprint."
         ),
         "sample_student_draft": (
-            "Illustrative draft: I sketched a high-contrast two-step route selector after observing simulated commuter pain points with small map pins."
+            "I sketched a high-contrast two-step route selector after observing simulated commuter pain points with small map pins."
         ),
         "sample_ai_disclosure": "",
     },

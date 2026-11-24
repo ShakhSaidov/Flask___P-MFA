@@ -1,5 +1,17 @@
 import React, { useState } from "react";
 
+const COVERAGE_LABELS = {
+  "Explicitly Evidenced": "Clearly Covered",
+  "Implicit / Unverified": "Assumed / Unchecked",
+  "Not Captured": "Missing",
+};
+
+const STATUS_LABELS = {
+  "Well Aligned": "Well Aligned",
+  "Review Recommended": "Needs Review",
+  "Potential Alignment Gap": "Gap Found",
+};
+
 function coverageClass(cov) {
   if (cov === "Explicitly Evidenced") return "pill cov-strong";
   if (cov === "Implicit / Unverified") return "pill cov-partial";
@@ -32,8 +44,36 @@ export default function AnalysisBoard({
       : alert.status === "Review Recommended"
       ? "cov-partial"
       : "cov-missing";
+  const statusLabel = STATUS_LABELS[alert.status] || alert.status;
 
-  const providerLabel = activeProvider === "ollama" ? "local Ollama" : "external model";
+  const providerLabel = activeProvider === "ollama" ? "local Ollama" : "external AI";
+
+  const requiredCheckpointFields = [
+    "title",
+    "timing",
+    "evidence_artifact",
+    "student_prompt",
+    "reflection_question",
+  ];
+
+  const incompleteCheckpointNumbers = (
+    analysis.proposed_checkpoints || []
+  ).reduce((missing, checkpoint, index) => {
+    const hasEmptyField = requiredCheckpointFields.some(
+      (field) =>
+        typeof checkpoint?.[field] !== "string" ||
+        !checkpoint[field].trim()
+    );
+
+    if (hasEmptyField) {
+      missing.push(index + 1);
+    }
+
+    return missing;
+  }, []);
+
+  const hasIncompleteCheckpoints =
+    incompleteCheckpointNumbers.length > 0;
 
   const handleExport = async () => {
     setExporting(true);
@@ -61,17 +101,17 @@ export default function AnalysisBoard({
       {isAnalysisStale && (
         <div className="warn-banner row-between">
           <span>
-            Assignment inputs changed after this review. Re-analyze in Setup before exporting or running Student Preview.
+            You changed the assignment. Re-run the check to update these results before exporting or testing Student View.
           </span>
           <button type="button" className="btn-secondary" onClick={onBackToSetup}>
-            Re-analyze in Setup
+            Re-run Check
           </button>
         </div>
       )}
 
       {piiMaskedCount > 0 && (
         <div className="info-banner">
-          Best-effort check masked <strong>{piiMaskedCount}</strong> obvious identifier(s) before {providerLabel} processing.
+          Privacy check hid <strong>{piiMaskedCount}</strong> personal detail(s) (email, phone, or Finnish ID) before sending to {providerLabel}.
         </div>
       )}
 
@@ -83,13 +123,16 @@ export default function AnalysisBoard({
               {form.title} · Arene {form.arene_tier.toUpperCase()}
             </span>
             <h2 className="section-title" style={{ marginTop: 2 }}>
-              Constructive Alignment Observations
+              Alignment Check
             </h2>
+            <p className="section-sub">
+              Do your task and final deliverable actually prove the learning outcomes?
+            </p>
           </div>
           <div className="btn-row">
-            <span className={`pill ${alertClass}`}>{alert.status}</span>
+            <span className={`pill ${alertClass}`}>{statusLabel}</span>
             <button type="button" className="btn-secondary" onClick={onBackToSetup}>
-              Edit Inputs
+              Edit Assignment
             </button>
           </div>
         </div>
@@ -107,9 +150,9 @@ export default function AnalysisBoard({
       {/* 2. Six P-MFA Factors */}
       <section className="board-section">
         <div>
-          <h3 className="section-title">Six-Factor P-MFA Coverage</h3>
+          <h3 className="section-title">6 Checks for Real Learning (P-MFA)</h3>
           <p className="section-sub">
-            Preliminary observations on assignment design, not student grades. Adjust any coverage label to match your judgment.
+            AI can fake a polished final essay. These 6 checks show what your task actually verifies. Change any rating if you disagree.
           </p>
         </div>
 
@@ -119,23 +162,25 @@ export default function AnalysisBoard({
               <div className="factor-top">
                 <div className="row-between">
                   <strong className="factor-name">{f.name}</strong>
-                  <span className={coverageClass(f.coverage)}>{f.coverage}</span>
+                  <span className={coverageClass(f.coverage)}>
+                    {COVERAGE_LABELS[f.coverage] || f.coverage}
+                  </span>
                 </div>
                 {f.evidence_basis && (
                   <p className="factor-evidence">
-                    <span className="factor-kicker">AI-suggested evidence basis:</span> {f.evidence_basis}
+                    <span className="factor-kicker">In your prompt:</span> {f.evidence_basis}
                   </p>
                 )}
                 <p className="factor-text">
-                  <span className="factor-kicker">Observation:</span> {f.diagnosis}
+                  <span className="factor-kicker">What&apos;s happening:</span> {f.diagnosis}
                 </p>
                 <p className="factor-rec">
-                  <span className="factor-kicker">Suggestion:</span> {f.recommendation}
+                  <span className="factor-kicker">How to improve:</span> {f.recommendation}
                 </p>
               </div>
               <div className="override-row">
                 <label htmlFor={`override-${idx}`} className="override-label">
-                  Teacher judgment:
+                  Your rating:
                 </label>
                 <select
                   id={`override-${idx}`}
@@ -143,9 +188,9 @@ export default function AnalysisBoard({
                   value={f.coverage}
                   onChange={(e) => onUpdateFactorCoverage(idx, e.target.value)}
                 >
-                  <option value="Explicitly Evidenced">Explicitly Evidenced</option>
-                  <option value="Implicit / Unverified">Implicit / Unverified</option>
-                  <option value="Not Captured">Not Captured</option>
+                  <option value="Explicitly Evidenced">Clearly Covered</option>
+                  <option value="Implicit / Unverified">Assumed / Unchecked</option>
+                  <option value="Not Captured">Missing</option>
                 </select>
               </div>
             </div>
@@ -153,24 +198,33 @@ export default function AnalysisBoard({
         </div>
       </section>
 
-      {/* 3. Progressive Process Checkpoints (Full-Width Timeline) */}
+      {/* 3. Checkpoints */}
       <section className="board-section">
         <div className="row-between">
           <div>
-            <h3 className="section-title">Process Checkpoints (Editable Progression)</h3>
+            <h3 className="section-title">3 Checkpoints</h3>
             <p className="section-sub">
-              Three staged milestones to make student progress observable over time. Edit any field directly.
+              Break the final deadline into 3 visible steps. Edit any box below before testing the Student View.
             </p>
           </div>
           <button
             type="button"
             className="btn-primary"
             onClick={onOpenStudentPreview}
-            disabled={isAnalysisStale}
+            disabled={isAnalysisStale || hasIncompleteCheckpoints}
           >
-            Preview Student View →
+            Test Student View →
           </button>
         </div>
+
+        {hasIncompleteCheckpoints && (
+          <div className="warn-banner" role="alert">
+            <strong>Incomplete checkpoints:</strong>{" "}
+            Complete all five required fields in checkpoint(s){" "}
+            {incompleteCheckpointNumbers.join(", ")} before exporting
+            the plan or opening Student View.
+          </div>
+        )}
 
         <div className="timeline-list">
           {(analysis.proposed_checkpoints || []).map((cp, idx) => (
@@ -192,7 +246,7 @@ export default function AnalysisBoard({
                     />
                   </div>
                   <div className="field-group">
-                    <label htmlFor={`cp-timing-${idx}`}>Timing</label>
+                    <label htmlFor={`cp-timing-${idx}`}>When</label>
                     <input
                       id={`cp-timing-${idx}`}
                       type="text"
@@ -202,7 +256,7 @@ export default function AnalysisBoard({
                     />
                   </div>
                   <div className="field-group">
-                    <label htmlFor={`cp-artifact-${idx}`}>Suggested Evidence Artifact</label>
+                    <label htmlFor={`cp-artifact-${idx}`}>What Students Hand In</label>
                     <input
                       id={`cp-artifact-${idx}`}
                       type="text"
@@ -215,7 +269,7 @@ export default function AnalysisBoard({
 
                 <div className="form-grid-2">
                   <div className="field-group">
-                    <label htmlFor={`cp-prompt-${idx}`}>Student Task Prompt</label>
+                    <label htmlFor={`cp-prompt-${idx}`}>Instructions for Students</label>
                     <textarea
                       id={`cp-prompt-${idx}`}
                       rows={4}
@@ -226,7 +280,7 @@ export default function AnalysisBoard({
                   </div>
 
                   <div className="field-group">
-                    <label htmlFor={`cp-reflection-${idx}`}>Self-Evaluation / Reflection Question</label>
+                    <label htmlFor={`cp-reflection-${idx}`}>Reflection Question</label>
                     <textarea
                       id={`cp-reflection-${idx}`}
                       rows={4}
@@ -242,13 +296,13 @@ export default function AnalysisBoard({
         </div>
       </section>
 
-      {/* 4. Disclosure & Export */}
+      {/* 4. AI Rule & Export */}
       <section className="board-section">
         <label htmlFor="disclosure-note" className="section-title" style={{ display: "block" }}>
-          Student AI Disclosure Policy
+          AI Rule for Students
         </label>
         <p className="section-sub" style={{ marginBottom: 12 }}>
-          Review the policy statement, then download your edited blueprint (including original instructions, factor labels, and checkpoints).
+          Review or edit the rule students will see, then download your full assignment plan.
         </p>
 
         <textarea
@@ -264,9 +318,9 @@ export default function AnalysisBoard({
             type="button"
             className="btn-secondary"
             onClick={onOpenStudentPreview}
-            disabled={isAnalysisStale}
+            disabled={isAnalysisStale || hasIncompleteCheckpoints}
           >
-            Preview Student View
+            Test Student View
           </button>
           <div className="btn-row">
             {exportedMarkdown && (
@@ -278,16 +332,16 @@ export default function AnalysisBoard({
               type="button"
               className="btn-primary"
               onClick={handleExport}
-              disabled={exporting || isAnalysisStale}
+              disabled={exporting || isAnalysisStale || hasIncompleteCheckpoints}
             >
-              {exporting ? "Preparing Blueprint..." : "Download Blueprint (.md)"}
+              {exporting ? "Creating Plan..." : "Download Plan (.md)"}
             </button>
           </div>
         </div>
 
         {exportedMarkdown && (
           <details className="export-details">
-            <summary>View exported Markdown (pmfa-assessment-blueprint.md)</summary>
+            <summary>Preview Markdown plan (pmfa-assessment-blueprint.md)</summary>
             <pre className="export-pre">{exportedMarkdown}</pre>
           </details>
         )}

@@ -337,6 +337,7 @@ def create_app() -> Flask:
                 return jsonify({"error": "One or more checkpoint entries are incomplete or invalid."}), 400
 
         tier_label = ARENE_TIERS[arene_tier]["label"]
+        canonical_alert_status = CANONICAL_ALIGNMENT_STATUS[alert["status"].strip().lower()]
 
         lines = [
             f"# P-MFA Assessment Blueprint: {title}",
@@ -355,7 +356,7 @@ def create_app() -> Flask:
                 "## 2. Original Assignment Instructions",
                 assignment_text,
                 "",
-                f"## 3. Constructive Alignment Observations ({alert['status']})",
+                f"## 3. Constructive Alignment Observations ({canonical_alert_status})",
                 alert["summary"].strip(),
                 "",
             ]
@@ -368,7 +369,8 @@ def create_app() -> Flask:
 
         lines.extend(["", "## 4. Six-Factor P-MFA Design Coverage (Preliminary AI Observations)"])
         for f in factors:
-            lines.append(f"### {f['name'].strip()} — *{f['coverage'].strip()}*")
+            canonical_coverage = CANONICAL_COVERAGE[f["coverage"].strip().lower()]
+            lines.append(f"### {f['name'].strip()} — *{canonical_coverage}*")
             if isinstance(f.get("evidence_basis"), str) and f["evidence_basis"].strip():
                 lines.append(f"- **Evidence Basis:** {f['evidence_basis'].strip()}")
             lines.append(f"- **Design Observation:** {f['diagnosis'].strip()}")

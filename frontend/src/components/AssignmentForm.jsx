@@ -3,10 +3,10 @@ import React from "react";
 const TIER_ORDER = ["blue", "green", "yellow", "red"];
 
 const TIER_SHORT = {
-  blue: { title: "Blue — AI Required", desc: "Students must use AI and report how it was used." },
-  green: { title: "Green — AI Allowed", desc: "Allowed within course instructions; no reporting required." },
-  yellow: { title: "Yellow — AI Reported", desc: "AI allowed within your rules; students must report use." },
-  red: { title: "Red — AI Prohibited", desc: "AI cannot be used to produce the assessed work. Any permitted preparatory use follows the lecturer's instructions." },
+  blue: { title: "Blue · AI Required", desc: "Students must use AI and explain how." },
+  green: { title: "Green · AI Allowed", desc: "AI is allowed. No report needed." },
+  yellow: { title: "Yellow · AI With Rules", desc: "AI allowed under your rules. Must be reported." },
+  red: { title: "Red · No AI", desc: "No AI for graded work. Student works independently." },
 };
 
 export default function AssignmentForm({
@@ -25,13 +25,13 @@ export default function AssignmentForm({
   return (
     <form className="panel stack-xl" onSubmit={onSubmit}>
       <section className="board-section-flat">
-        <h2 className="section-title">1. Assignment &amp; Learning Outcomes</h2>
+        <h2 className="section-title">1. Describe Your Assignment</h2>
         <p className="section-sub">
-          Enter your existing assignment or load an illustrative synthetic scenario to check P-MFA coverage and draft process checkpoints.
+          Paste your task below or click a sample to see where AI could bypass learning and generate 3 checkpoints.
         </p>
 
         <div className="preset-bar">
-          <span className="preset-label">Illustrative scenarios:</span>
+          <span className="preset-label">Try a sample:</span>
           {samples.map((s) => (
             <button
               key={s.id}
@@ -59,25 +59,25 @@ export default function AssignmentForm({
 
           <div className="form-grid-2">
             <div className="field-group">
-              <label htmlFor="outcomes">Stated Learning Outcomes</label>
+              <label htmlFor="outcomes">Learning Outcomes</label>
               <textarea
                 id="outcomes"
                 rows={5}
                 value={form.learning_outcomes}
                 onChange={(e) => setForm({ ...form, learning_outcomes: e.target.value })}
-                placeholder="What must students demonstrate by the end of this assignment?"
+                placeholder="What should students actually know or be able to do by the end?"
                 required
               />
             </div>
 
             <div className="field-group">
-              <label htmlFor="assignment">Current Assignment Instructions</label>
+              <label htmlFor="assignment">Assignment Prompt</label>
               <textarea
                 id="assignment"
                 rows={5}
                 value={form.assignment_text}
                 onChange={(e) => setForm({ ...form, assignment_text: e.target.value })}
-                placeholder="Paste the existing task prompt, length, and deliverable format..."
+                placeholder="Paste the task instructions, length, and what students submit..."
                 required
               />
             </div>
@@ -87,9 +87,9 @@ export default function AssignmentForm({
 
       <section className="board-section stack-lg">
         <div>
-          <h3 className="section-title">2. Student AI Policy (Arene Traffic Light)</h3>
+          <h3 className="section-title">2. Student AI Rules (Arene Traffic Light)</h3>
           <p className="section-sub">
-            Defines what students are permitted to do in this assignment. Does not restrict teacher planning.
+            Pick what students may do with AI in this task.
           </p>
         </div>
 
@@ -115,22 +115,22 @@ export default function AssignmentForm({
         </div>
 
         <div className="field-group">
-          <label htmlFor="custom-rules">Course-Specific AI Boundaries (Optional)</label>
+          <label htmlFor="custom-rules">Extra AI Rules for This Task (Optional)</label>
           <input
             id="custom-rules"
             type="text"
             value={form.custom_ai_rules}
             onChange={(e) => setForm({ ...form, custom_ai_rules: e.target.value })}
-            placeholder="e.g., AI allowed for keyword search; prohibited for critical appraisal"
+            placeholder="e.g., AI allowed for keyword search; not allowed for critical appraisal"
           />
         </div>
 
         <div className="row-between">
           <span className="privacy-foot">
-            Use synthetic examples only. Best-effort regex masks obvious emails, phone numbers, and Finnish IDs before model processing ({providerLabel}); this is not anonymisation.
+            Demo only: use fictional examples, no real student data. Emails, phone numbers, and Finnish IDs are automatically hidden before sending to {providerLabel}.
           </span>
           <button type="submit" className="btn-primary" disabled={loading}>
-            {loading ? "Analyzing Design..." : "Analyze Assignment Design →"}
+            {loading ? "Checking assignment..." : "Check Assignment →"}
           </button>
         </div>
       </section>

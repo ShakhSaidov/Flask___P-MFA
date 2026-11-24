@@ -65,7 +65,7 @@ export default function StudentPreview({
     activeState.chosenFormat === "__custom__"
       ? activeState.customFormat.trim()
       : activeState.chosenFormat;
-  const providerLabel = activeProvider === "ollama" ? "local Ollama" : "external model";
+  const providerLabel = activeProvider === "ollama" ? "local Ollama" : "external AI";
 
   const handleLoadSample = () => {
     updateActiveState({
@@ -78,6 +78,27 @@ export default function StudentPreview({
   const handleSubmit = async (e) => {
     e.preventDefault();
     if (isAnalysisStale) return;
+    const requiredFields = [
+      "title",
+      "timing",
+      "student_prompt",
+      "reflection_question",
+      "evidence_artifact",
+    ];
+
+    const missingFields = requiredFields.filter(
+      (field) =>
+        typeof activeCp?.[field] !== "string" ||
+        !activeCp[field].trim()
+    );
+
+    if (missingFields.length > 0) {
+      setError(
+        `Complete the checkpoint before submitting. Missing: ${missingFields.join(", ")}.`
+      );
+      return;
+    }
+
     setError("");
     setLoading(true);
     try {
@@ -103,7 +124,7 @@ export default function StudentPreview({
         updateActiveState({ result: data });
       }
     } catch {
-      setError("Network error contacting backend.");
+      setError("Could not reach the server. Check that Flask is running.");
     } finally {
       setLoading(false);
     }
@@ -113,20 +134,20 @@ export default function StudentPreview({
     <div className="stack-lg">
       <div className="role-strip row-between">
         <span>
-          <strong>Simulated Student View</strong> · Checkpoint {selectedIdx + 1} of {Math.max(checkpoints.length, 1)} (in-browser simulation, nothing is saved)
+          <strong>Student View</strong> · Checkpoint {selectedIdx + 1} of {Math.max(checkpoints.length, 1)} — Practice sandbox (nothing is saved)
         </span>
         {isAnalysisStale && (
           <button type="button" className="preset-pill" onClick={onBackToSetup}>
-            Inputs changed — re-analyze in Setup
+            Assignment changed — re-check
           </button>
         )}
       </div>
 
       <div className="student-grid">
-        <div className="panel stack-lg">
+        <div className="panel stack-lg student-context-panel">
           <div className="row-between">
             <div>
-              <span className="eyebrow">Assignment Context</span>
+              <span className="eyebrow">Assignment</span>
               <h2 className="section-title" style={{ marginTop: 2 }}>
                 {form.title}
               </h2>
@@ -148,7 +169,7 @@ export default function StudentPreview({
 
           {checkpoints.length > 1 && (
             <div className="field-group">
-              <label htmlFor="cp-select">Select Checkpoint</label>
+              <label htmlFor="cp-select">Choose Checkpoint</label>
               <select
                 id="cp-select"
                 value={selectedIdx}
@@ -177,20 +198,20 @@ export default function StudentPreview({
             <p className="cp-line">
               <strong>Reflection:</strong> {activeCp.reflection_question}
             </p>
-            <p className="cp-meta">Suggested artifact: {activeCp.evidence_artifact}</p>
+            <p className="cp-meta">Hand in: {activeCp.evidence_artifact}</p>
           </div>
         </div>
 
         <form className="panel stack-lg" onSubmit={handleSubmit}>
           <div>
-            <h3 className="section-title">Choose Your Evidence &amp; Check Your Progress</h3>
+            <h3 className="section-title">Try a Student Check-In</h3>
             <p className="section-sub">
-              Pick how you want to demonstrate learning at this checkpoint and test your plan against the course AI rules.
+              Pick how you&apos;ll show your progress, write a quick note, and see how the AI coach responds.
             </p>
           </div>
 
           <div className="field-group">
-            <span className="field-label">Evidence Format</span>
+            <span className="field-label">How I&apos;ll Show My Progress</span>
             {evidenceFormats.map((opt) => (
               <label key={opt} className={`choice-item ${activeState.chosenFormat === opt ? "selected" : ""}`}>
                 <input
@@ -209,14 +230,15 @@ export default function StudentPreview({
                 checked={activeState.chosenFormat === "__custom__"}
                 onChange={() => updateActiveState({ chosenFormat: "__custom__", result: null })}
               />
-              <span>Propose my own evidence format...</span>
+              <span>Use a different format...</span>
             </label>
             {activeState.chosenFormat === "__custom__" && (
               <input
                 type="text"
+                aria-label="Custom progress format"
                 value={activeState.customFormat}
                 onChange={(e) => updateActiveState({ customFormat: e.target.value, result: null })}
-                placeholder="Describe how you will demonstrate learning..."
+                placeholder="e.g., 2-minute screen recording walking through my code"
                 required
               />
             )}
@@ -224,10 +246,10 @@ export default function StudentPreview({
 
           <div className="field-group">
             <div className="row-between">
-              <label htmlFor="student-draft">Checkpoint Draft or Reflection Note</label>
+              <label htmlFor="student-draft">Your Progress Note</label>
               {sampleStudentDraft && (
                 <button type="button" className="preset-pill" onClick={handleLoadSample}>
-                  Load Sample Draft
+                  Use Sample Note
                 </button>
               )}
             </div>
@@ -236,7 +258,7 @@ export default function StudentPreview({
               rows={5}
               value={activeState.draft}
               onChange={(e) => updateActiveState({ draft: e.target.value, result: null })}
-              placeholder="Summarize your progress, key choices, and questions..."
+              placeholder="What have you done so far, what choices did you make, and where are you stuck?"
               required
             />
           </div>
@@ -244,28 +266,29 @@ export default function StudentPreview({
           {requiresDisclosure && (
             <div className="field-group">
               <label htmlFor="ai-disclosure">
-                AI Use Declaration ({form.arene_tier === "blue" ? "Required by Blue Tier" : "Required by Yellow Tier"})
+                How You Used AI ({form.arene_tier === "blue" ? "Required · Blue Rule" : "Required · Yellow Rule"})
               </label>
-              <input
+              <textarea
                 id="ai-disclosure"
-                type="text"
+                rows={2}
+                className="textarea-compact"
                 value={activeState.aiDisclosure}
                 onChange={(e) => updateActiveState({ aiDisclosure: e.target.value, result: null })}
-                placeholder="Briefly report which AI tools you used and how you verified outputs..."
+                placeholder="Which AI tool did you use, and how did you check its work?"
               />
             </div>
           )}
 
           <div className="row-between">
             <span className="privacy-foot">
-              Use synthetic examples only. Do not enter real student work, personal data, or confidential course material. Identifier masking is best-effort and does not make submitted content safe for external AI processing.
+              Demo only: do not paste real student work or personal data. Obvious IDs are hidden automatically, not fully anonymized.
             </span>
             <button type="submit" className="btn-primary" disabled={loading || isAnalysisStale}>
               {loading
-                ? "Reviewing Checkpoint..."
+                ? "Checking..."
                 : aiAllowed
-                ? "Get Socratic Feedback"
-                : "Show Independent Self-Check"}
+                ? "Ask Coach for Feedback"
+                : "Run Self-Check (No AI)"}
             </button>
           </div>
 
@@ -275,31 +298,31 @@ export default function StudentPreview({
             <div className="stack-lg">
               {activeState.result.pii_masked_count > 0 && (
                 <div className="info-banner">
-                  Best-effort check masked <strong>{activeState.result.pii_masked_count}</strong> obvious identifier(s) before {providerLabel} processing.
+                  Privacy check hid <strong>{activeState.result.pii_masked_count}</strong> personal detail(s) before sending to {providerLabel}.
                 </div>
               )}
 
               <div className="cp-card-wide">
                 <div className="row-between">
                   <strong>
-                    {activeState.result.ai_assisted ? "Socratic Mentor Feedback" : "Independent Self-Check"}
+                    {activeState.result.ai_assisted ? "AI Coach Feedback" : "Self-Check Checklist"}
                   </strong>
                   <span className={`pill ${activeState.result.ai_assisted ? "cov-strong" : "cov-missing"}`}>
                     {activeState.result.ai_assisted
-                      ? "Guided Reflection (Prompt-Based)"
-                      : "AI Disabled (Red Tier)"}
+                      ? "Coach Mode · Won't Write for You"
+                      : "AI Off · Red Rule"}
                   </span>
                 </div>
 
                 <div className="feedback-body">
-                  <strong>{activeState.result.ai_assisted ? "What is working:" : "Policy status:"}</strong>
+                  <strong>{activeState.result.ai_assisted ? "What's working:" : "Rule check:"}</strong>
                   <ul>
                     {(activeState.result.feedback.strengths || []).map((s, i) => (
                       <li key={i}>{s}</li>
                     ))}
                   </ul>
 
-                  <strong>Questions for your next step:</strong>
+                  <strong>Questions to think about:</strong>
                   <ul>
                     {(activeState.result.feedback.probing_questions || []).map((q, i) => (
                       <li key={i}>{q}</li>
@@ -307,10 +330,10 @@ export default function StudentPreview({
                   </ul>
 
                   <p>
-                    <strong>Evidence format note:</strong> {activeState.result.feedback.evidence_coaching}
+                    <strong>Format fit:</strong> {activeState.result.feedback.evidence_coaching}
                   </p>
                   <p>
-                    <strong>Alignment &amp; policy:</strong> {activeState.result.feedback.alignment_warning}
+                    <strong>Rules &amp; goals:</strong> {activeState.result.feedback.alignment_warning}
                   </p>
                   <p className="privacy-foot" style={{ marginBottom: 0 }}>
                     {activeState.result.feedback.policy_reminder}
