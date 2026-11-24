@@ -36,3 +36,31 @@ python -m venv .venv
 pip install -r backend/requirements.txt
 cp backend/.env.example backend/.env
 # Add your GROQ_API_KEY to backend/.env (or set LLM_PROVIDER=ollama for local inference)
+```
+
+Start Flask (using the prebuilt `backend/static_dist/` bundle):
+```bash
+python -m backend.app
+# or: flask --app backend.app run
+```
+Open `http://127.0.0.1:5000`.
+
+### 2. Frontend Development (Optional)
+If modifying `frontend/src/`:
+```bash
+cd frontend
+npm ci
+npm run build   # builds into ../backend/static_dist
+```
+For live Vite hot-reload alongside Flask:
+```bash
+cd frontend
+npm run dev     # proxies /api -> http://127.0.0.1:5000
+```
+
+### 3. Automated Tests
+```bash
+python -m pytest -v
+```
+
+---
