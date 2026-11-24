@@ -392,7 +392,7 @@ def create_app() -> Flask:
                 "## 6. Draft Student AI Disclosure Policy",
                 disclosure.strip(),
                 "",
-                "_Note: Generated as an editable design draft inspired by P-MFA (Hamalainen & Leiviska, 2025). Final pedagogical and grading judgment rests with the instructor._",
+                "_Note: Generated as an editable design draft inspired by P-MFA (Hämäläinen & Leiviskä, 2025). Final pedagogical and grading judgment rests with the instructor._",
                 "",
             ]
         )

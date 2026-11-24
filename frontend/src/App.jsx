@@ -22,6 +22,7 @@ export default function App() {
   const [sampleAiDisclosure, setSampleAiDisclosure] = useState("");
 
   const [analysis, setAnalysis] = useState(null);
+  const [analysisVersion, setAnalysisVersion] = useState(0);
   const [isAnalysisStale, setIsAnalysisStale] = useState(false);
   const [piiMaskedCount, setPiiMaskedCount] = useState(0);
   const [exportedMarkdown, setExportedMarkdown] = useState("");
@@ -59,7 +60,14 @@ export default function App() {
   }, []);
 
   const handleUpdateForm = (updater) => {
-    setForm((prev) => (typeof updater === "function" ? updater(prev) : updater));
+    setForm((prev) =>
+      typeof updater === "function" ? updater(prev) : updater
+    );
+
+    setActiveSampleId("");
+    setSampleStudentDraft("");
+    setSampleAiDisclosure("");
+
     if (analysis) {
       setIsAnalysisStale(true);
       setExportedMarkdown("");
@@ -99,6 +107,7 @@ export default function App() {
         setError(data.error || "Analysis failed.");
       } else {
         setAnalysis(data.analysis);
+        setAnalysisVersion((prev) => prev + 1);
         setIsAnalysisStale(false);
         setPiiMaskedCount(data.pii_masked_count || 0);
         setStep("review");
@@ -245,19 +254,22 @@ export default function App() {
           />
         )}
 
-        {step === "student" && (
-          <StudentPreview
-            form={form}
-            analysis={analysis}
-            isAnalysisStale={isAnalysisStale}
-            areneTiers={areneTiers}
-            evidenceFormats={evidenceFormats}
-            activeProvider={activeProvider}
-            sampleStudentDraft={sampleStudentDraft}
-            sampleAiDisclosure={sampleAiDisclosure}
-            onBackToReview={() => setStep("review")}
-            onBackToSetup={() => setStep("setup")}
-          />
+        {analysis && (
+          <div hidden={step !== "student"}>
+            <StudentPreview
+              key={analysisVersion}
+              form={form}
+              analysis={analysis}
+              isAnalysisStale={isAnalysisStale}
+              areneTiers={areneTiers}
+              evidenceFormats={evidenceFormats}
+              activeProvider={activeProvider}
+              sampleStudentDraft={sampleStudentDraft}
+              sampleAiDisclosure={sampleAiDisclosure}
+              onBackToReview={() => setStep("review")}
+              onBackToSetup={() => setStep("setup")}
+            />
+          </div>
         )}
       </main>
     </div>

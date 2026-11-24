@@ -258,7 +258,7 @@ export default function StudentPreview({
 
           <div className="row-between">
             <span className="privacy-foot">
-              Best-effort regex masks obvious identifiers before {providerLabel} processing. Do not enter real personal data.
+              Use synthetic examples only. Do not enter real student work, personal data, or confidential course material. Identifier masking is best-effort and does not make submitted content safe for external AI processing.
             </span>
             <button type="submit" className="btn-primary" disabled={loading || isAnalysisStale}>
               {loading
@@ -286,7 +286,7 @@ export default function StudentPreview({
                   </strong>
                   <span className={`pill ${activeState.result.ai_assisted ? "cov-strong" : "cov-missing"}`}>
                     {activeState.result.ai_assisted
-                      ? "Socratic Feedback (No Answers Generated)"
+                      ? "Guided Reflection (Prompt-Based)"
                       : "AI Disabled (Red Tier)"}
                   </span>
                 </div>

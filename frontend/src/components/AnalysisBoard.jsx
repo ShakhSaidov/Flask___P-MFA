@@ -45,10 +45,15 @@ export default function AnalysisBoard({
   };
 
   const handleCopy = async () => {
-    if (!exportedMarkdown || !navigator.clipboard) return;
-    await navigator.clipboard.writeText(exportedMarkdown);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 2000);
+    if (!exportedMarkdown || !navigator.clipboard?.writeText) return;
+
+    try {
+      await navigator.clipboard.writeText(exportedMarkdown);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    } catch (err) {
+      console.error("Clipboard copy failed:", err);
+    }
   };
 
   return (
@@ -118,7 +123,7 @@ export default function AnalysisBoard({
                 </div>
                 {f.evidence_basis && (
                   <p className="factor-evidence">
-                    <span className="factor-kicker">Evidence basis:</span> {f.evidence_basis}
+                    <span className="factor-kicker">AI-suggested evidence basis:</span> {f.evidence_basis}
                   </p>
                 )}
                 <p className="factor-text">

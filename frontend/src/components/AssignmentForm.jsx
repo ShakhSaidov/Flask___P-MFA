@@ -4,9 +4,9 @@ const TIER_ORDER = ["blue", "green", "yellow", "red"];
 
 const TIER_SHORT = {
   blue: { title: "Blue — AI Required", desc: "Students must use AI and report how it was used." },
-  green: { title: "Green — AI Allowed", desc: "Students may use AI freely; no reporting needed." },
+  green: { title: "Green — AI Allowed", desc: "Allowed within course instructions; no reporting required." },
   yellow: { title: "Yellow — AI Reported", desc: "AI allowed within your rules; students must report use." },
-  red: { title: "Red — AI Prohibited", desc: "No AI allowed; competence verified independently." },
+  red: { title: "Red — AI Prohibited", desc: "AI cannot be used to produce the assessed work. Any permitted preparatory use follows the lecturer's instructions." },
 };
 
 export default function AssignmentForm({

@@ -20,7 +20,7 @@
 
 body {
   margin: 0;
-  font-family: "Open Sans", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
   background-color: var(--bg);
   color: var(--text);
   line-height: 1.55;
@@ -29,8 +29,9 @@ body {
 
 h1,
 h2,
-h3 {
-  font-family: "Montserrat", "Open Sans", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+h3,
+.timeline-marker {
+  font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
 }
 
 /* Header & Stepper */
@@ -592,7 +593,7 @@ select:focus {
   border-radius: 50%;
   background: var(--accent);
   color: #ffffff;
-  font-family: "Montserrat", sans-serif;
+  font-family: sans-serif;
   font-weight: 700;
   font-size: 0.88rem;
   display: grid;

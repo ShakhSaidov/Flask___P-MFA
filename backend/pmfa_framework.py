@@ -38,7 +38,7 @@ ARENE_TIERS = {
         "badge": "#15803d",
         "student_ai_enabled": True,
         "requires_disclosure": False,
-        "rule": "Students may use AI freely for brainstorming, drafting support, or language polishing without mandatory reporting.",
+        "rule": "AI use is allowed within the assignment and course instructions. No AI-use report is required.",
     },
     "yellow": {
         "label": "Yellow — AI Allowed Within Bounds & Reported",
@@ -52,7 +52,7 @@ ARENE_TIERS = {
         "badge": "#b91c1c",
         "student_ai_enabled": False,
         "requires_disclosure": False,
-        "rule": "Student AI assistance is prohibited to verify independent competence. Assessment relies on staged process evidence and controlled or oral verification.",
+        "rule": "AI must not be used to create the assessed output. Any permitted preparatory use must follow the lecturer's course-specific instructions. This prototype disables its own AI-assisted student coaching under the Red tier. Assessment relies on staged process evidence and controlled or oral verification.",
     },
 }
 
@@ -92,7 +92,7 @@ SAMPLE_ASSIGNMENTS = [
         "title": "Accessible Public Service Concept — Helsinki Mobility",
         "school": "Culture (Design & Media)",
         "arene_tier": "green",
-        "custom_ai_rules": "Students may freely use AI for ideation, copy drafts, or accessibility checklists; final field validation must come from real user observations.",
+        "custom_ai_rules": "AI is permitted for ideation, copy drafts, and accessibility checklists within course guidelines; final validation must come from observed user testing.",
         "learning_outcomes": (
             "1. Apply universal design and WCAG accessibility principles to a public digital service.\n"
             "2. Iterate a service concept based on real user observations in the Helsinki metropolitan area.\n"
