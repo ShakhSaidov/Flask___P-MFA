@@ -20,6 +20,9 @@ PHONE_RE = re.compile(
 )
 
 YEAR_RANGE_RE = re.compile(r"^(?:19|20)\d{2}\-(?:19|20)\d{2}$")
+HYPHEN_DATE_RE = re.compile(
+    r"^(?:\d{1,2}-\d{1,2}-(?:19|20)\d{2}|(?:19|20)\d{2}-\d{1,2}-\d{1,2})$"
+)
 
 
 def mask_pii(text: str) -> Tuple[str, Dict[str, int]]:
@@ -35,7 +38,7 @@ def mask_pii(text: str) -> Tuple[str, Dict[str, int]]:
     def _replace_phone(match: re.Match) -> str:
         nonlocal phone_count
         raw = match.group(0).strip()
-        if YEAR_RANGE_RE.match(raw):
+        if YEAR_RANGE_RE.match(raw) or HYPHEN_DATE_RE.match(raw):
             return raw
         digits_only = re.sub(r"\D", "", raw)
         if len(digits_only) >= 7:

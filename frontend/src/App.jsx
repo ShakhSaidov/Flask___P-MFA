@@ -1,4 +1,5 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
+import { requestJson } from "./api.js";
 import AssignmentForm from "./components/AssignmentForm.jsx";
 import AnalysisBoard from "./components/AnalysisBoard.jsx";
 import StudentPreview from "./components/StudentPreview.jsx";
@@ -6,35 +7,48 @@ import StudentPreview from "./components/StudentPreview.jsx";
 const FALLBACK_ARENE_TIERS = {
   blue: {
     label: "Blue — AI Required & Reported",
+    short_title: "Blue · AI Required",
+    short_desc: "Students must use AI and report how they used and verified it.",
     badge: "#1d4ed8",
     student_ai_enabled: true,
     requires_disclosure: true,
     rule: "Students must use AI in the assignment and report how AI outputs were prompted, evaluated, and verified.",
   },
-
   green: {
     label: "Green — AI Allowed (No Reporting Needed)",
+    short_title: "Green · AI Allowed",
+    short_desc: "AI allowed within course instructions. No reporting required.",
     badge: "#15803d",
     student_ai_enabled: true,
     requires_disclosure: false,
     rule: "AI use is allowed within the assignment and course instructions. No AI-use report is required.",
   },
-
   yellow: {
     label: "Yellow — AI Allowed Within Bounds & Reported",
+    short_title: "Yellow · AI With Rules",
+    short_desc: "Allowed within your boundaries. Must be documented and reported.",
     badge: "#b45309",
     student_ai_enabled: true,
     requires_disclosure: true,
     rule: "Students may use AI within teacher-defined boundaries and must document and reflect on its use. AI can never be the author.",
   },
-
   red: {
     label: "Red — AI Prohibited",
+    short_title: "Red · No AI",
+    short_desc: "No AI for graded work. Relies on independent and oral/process checks.",
     badge: "#b91c1c",
     student_ai_enabled: false,
     requires_disclosure: false,
-    rule: "AI must not be used to create the assessed output. Any permitted preparatory use must follow the lecturer's course-specific instructions. This prototype disables its own AI-assisted student coaching under the Red tier. Assessment relies on staged process evidence and controlled or oral verification.",
+    rule: "AI must not be used to create graded work. This prototype disables AI Coach feedback under the Red tier; assessment relies on independent process evidence and oral or controlled verification.",
   },
+};
+
+const EMPTY_FORM = {
+  title: "",
+  learning_outcomes: "",
+  assignment_text: "",
+  arene_tier: "yellow",
+  custom_ai_rules: "",
 };
 
 export default function App() {
@@ -45,13 +59,7 @@ export default function App() {
   const [activeProvider, setActiveProvider] = useState("groq");
   const [step, setStep] = useState("setup"); // "setup" | "review" | "student"
 
-  const [form, setForm] = useState({
-    title: "",
-    learning_outcomes: "",
-    assignment_text: "",
-    arene_tier: "blue",
-    custom_ai_rules: "",
-  });
+  const [form, setForm] = useState(EMPTY_FORM);
   const [sampleStudentDraft, setSampleStudentDraft] = useState("");
   const [sampleAiDisclosure, setSampleAiDisclosure] = useState("");
 
@@ -62,6 +70,8 @@ export default function App() {
   const [exportedMarkdown, setExportedMarkdown] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+  const [exportError, setExportError] = useState("");
+  const analyzeRequestIdRef = useRef(0);
 
   useEffect(() => {
     fetch("/api/examples")
@@ -98,26 +108,35 @@ export default function App() {
   }, []);
 
   const goToStep = (nextStep) => {
+    if (loading) return;
     setError("");
+    setExportError("");
     setStep(nextStep);
   };
 
   const handleUpdateForm = (updater) => {
-    setForm((prev) =>
-      typeof updater === "function" ? updater(prev) : updater
-    );
+    if (loading) return;
+    const nextForm = typeof updater === "function" ? updater(form) : updater;
+    const coreTaskChanged =
+      nextForm.title !== form.title ||
+      nextForm.learning_outcomes !== form.learning_outcomes ||
+      nextForm.assignment_text !== form.assignment_text;
 
+    setForm(nextForm);
     setActiveSampleId("");
-    setSampleStudentDraft("");
-    setSampleAiDisclosure("");
-
+    if (coreTaskChanged) {
+      setSampleStudentDraft("");
+      setSampleAiDisclosure("");
+    }
     if (analysis) {
       setIsAnalysisStale(true);
       setExportedMarkdown("");
+      setExportError("");
     }
   };
 
   const handleSelectSample = (sample) => {
+    if (loading) return;
     setActiveSampleId(sample.id);
     setForm({
       title: sample.title,
@@ -132,38 +151,56 @@ export default function App() {
     setIsAnalysisStale(false);
     setExportedMarkdown("");
     setError("");
+    setExportError("");
+  };
+
+  const handleClearForm = () => {
+    if (loading) return;
+    setActiveSampleId("");
+    setForm({ ...EMPTY_FORM, arene_tier: form.arene_tier });
+    setSampleStudentDraft("");
+    setSampleAiDisclosure("");
+    setAnalysis(null);
+    setIsAnalysisStale(false);
+    setExportedMarkdown("");
+    setError("");
+    setExportError("");
   };
 
   const handleAnalyze = async (e) => {
     e.preventDefault();
+    if (loading) return;
+    const requestId = ++analyzeRequestIdRef.current;
+    const submittedForm = { ...form };
     setLoading(true);
     setError("");
+    setExportError("");
     setExportedMarkdown("");
     try {
-      const resp = await fetch("/api/analyze", {
+      const data = await requestJson("/api/analyze", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(form),
+        body: JSON.stringify(submittedForm),
       });
-      const data = await resp.json();
-      if (!resp.ok) {
-        setError(data.error || "Could not analyze the assignment.");
-      } else {
-        setAnalysis(data.analysis);
-        setAnalysisVersion((prev) => prev + 1);
-        setIsAnalysisStale(false);
-        setPiiMaskedCount(data.pii_masked_count || 0);
-        goToStep("review");
-      }
-    } catch {
-      setError("Could not reach the server. Check that Flask is running.");
+      if (analyzeRequestIdRef.current !== requestId) return;
+      setAnalysis(data.analysis);
+      setAnalysisVersion((prev) => prev + 1);
+      setIsAnalysisStale(false);
+      setPiiMaskedCount(data.pii_masked_count || 0);
+      setStep("review");
+    } catch (err) {
+      if (analyzeRequestIdRef.current !== requestId) return;
+      setError(err.message || "Could not analyze the assignment.");
     } finally {
-      setLoading(false);
+      if (analyzeRequestIdRef.current === requestId) {
+        setLoading(false);
+      }
     }
   };
 
   const handleUpdateFactorCoverage = (index, newCoverage) => {
     setExportedMarkdown("");
+    setExportError("");
     setAnalysis((prev) => ({
       ...prev,
       factors: prev.factors.map((f, i) => (i === index ? { ...f, coverage: newCoverage } : f)),
@@ -172,6 +209,7 @@ export default function App() {
 
   const handleUpdateCheckpoint = (index, field, value) => {
     setExportedMarkdown("");
+    setExportError("");
     setAnalysis((prev) => ({
       ...prev,
       proposed_checkpoints: prev.proposed_checkpoints.map((cp, i) =>
@@ -182,14 +220,15 @@ export default function App() {
 
   const handleUpdateDisclosure = (value) => {
     setExportedMarkdown("");
+    setExportError("");
     setAnalysis((prev) => ({ ...prev, arene_disclosure_note: value }));
   };
 
-  const handleExportMarkdown = async () => {
-    if (isAnalysisStale) return;
-    setError("");
+  const handleExportMarkdown = async (shouldDownload = true) => {
+    if (isAnalysisStale) return "";
+    setExportError("");
     try {
-      const resp = await fetch("/api/export", {
+      const data = await requestJson("/api/export", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -201,24 +240,25 @@ export default function App() {
           analysis,
         }),
       });
-      const data = await resp.json();
-      if (!resp.ok) {
-        setError(data.error || "Could not export the plan. Make sure all checkpoint fields are filled in.");
-        return;
-      }
       setExportedMarkdown(data.markdown);
 
-      const blob = new Blob([data.markdown], { type: "text/markdown;charset=utf-8" });
-      const url = URL.createObjectURL(blob);
-      const link = document.createElement("a");
-      link.href = url;
-      link.download = data.filename || "pmfa-assessment-blueprint.md";
-      document.body.appendChild(link);
-      link.click();
-      link.remove();
-      setTimeout(() => URL.revokeObjectURL(url), 1000);
-    } catch {
-      setError("Could not reach the server to export your plan.");
+      if (shouldDownload) {
+        const blob = new Blob([data.markdown], { type: "text/markdown;charset=utf-8" });
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement("a");
+        link.href = url;
+        link.download = data.filename || "pmfa-assessment-blueprint.md";
+        document.body.appendChild(link);
+        link.click();
+        link.remove();
+        setTimeout(() => URL.revokeObjectURL(url), 1000);
+      }
+      return data.markdown;
+    } catch (err) {
+      setExportError(
+        err.message || "Could not export the plan. Make sure all checkpoint and disclosure fields are filled in."
+      );
+      return "";
     }
   };
 
@@ -232,13 +272,14 @@ export default function App() {
               <h1>P-MFA Studio</h1>
               <span className="proto-tag">Metropolia R&amp;D Prototype</span>
             </div>
-            <p>Spot AI blind spots in assignments and build 3 progress checkpoints</p>
+            <p>Spot AI blind spots in assignments and design 3 process checkpoints</p>
           </div>
 
           <nav className="stepper" aria-label="Workflow steps">
             <button
               type="button"
               className={`step-btn ${step === "setup" ? "active" : ""}`}
+              disabled={loading}
               onClick={() => goToStep("setup")}
             >
               1. Assignment
@@ -246,7 +287,7 @@ export default function App() {
             <button
               type="button"
               className={`step-btn ${step === "review" ? "active" : ""}`}
-              disabled={!analysis}
+              disabled={loading || !analysis}
               onClick={() => goToStep("review")}
             >
               2. Review
@@ -254,7 +295,7 @@ export default function App() {
             <button
               type="button"
               className={`step-btn ${step === "student" ? "active" : ""}`}
-              disabled={!analysis || isAnalysisStale}
+              disabled={loading || !analysis || isAnalysisStale}
               onClick={() => goToStep("student")}
             >
               3. Student View
@@ -264,7 +305,7 @@ export default function App() {
       </header>
 
       <main className="container">
-        {error && <div className="error-banner">{error}</div>}
+        {error && <div className="error-banner" role="alert">{error}</div>}
 
         {step === "setup" && (
           <AssignmentForm
@@ -276,6 +317,7 @@ export default function App() {
             activeProvider={activeProvider}
             loading={loading}
             onSelectSample={handleSelectSample}
+            onClearForm={handleClearForm}
             onSubmit={handleAnalyze}
           />
         )}
@@ -293,6 +335,7 @@ export default function App() {
             onUpdateDisclosure={handleUpdateDisclosure}
             onExportMarkdown={handleExportMarkdown}
             exportedMarkdown={exportedMarkdown}
+            exportError={exportError}
             onOpenStudentPreview={() => goToStep("student")}
           />
         )}

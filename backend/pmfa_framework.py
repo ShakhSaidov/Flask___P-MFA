@@ -1,3 +1,37 @@
+from typing import Any, Dict, List, Optional
+
+MAX_TEXT_LEN = 4000
+MAX_SHORT_LEN = 400
+
+REQUIRED_CHECKPOINT_FIELDS = (
+    "title",
+    "timing",
+    "student_prompt",
+    "reflection_question",
+    "evidence_artifact",
+)
+
+FACTOR_KEY_MAP = [
+    ("knowledge", "Knowledge"),
+    ("outputs", "Outputs"),
+    ("application", "Application"),
+    ("process_continuity", "Process Continuity"),
+    ("self_evaluation", "Self-Evaluation"),
+    ("situated_understanding", "Situated Understanding"),
+]
+
+CANONICAL_COVERAGE = {
+    "explicitly evidenced": "Explicitly Evidenced",
+    "implicit / unverified": "Implicit / Unverified",
+    "not captured": "Not Captured",
+}
+
+CANONICAL_ALIGNMENT_STATUS = {
+    "well aligned": "Well Aligned",
+    "review recommended": "Review Recommended",
+    "potential alignment gap": "Potential Alignment Gap",
+}
+
 PMFA_FACTORS = [
     {
         "key": "Knowledge",
@@ -28,6 +62,8 @@ PMFA_FACTORS = [
 ARENE_TIERS = {
     "blue": {
         "label": "Blue — AI Required & Reported",
+        "short_title": "Blue · AI Required",
+        "short_desc": "Students must use AI and report how they used and verified it.",
         "badge": "#1d4ed8",
         "student_ai_enabled": True,
         "requires_disclosure": True,
@@ -35,6 +71,8 @@ ARENE_TIERS = {
     },
     "green": {
         "label": "Green — AI Allowed (No Reporting Needed)",
+        "short_title": "Green · AI Allowed",
+        "short_desc": "AI allowed within course instructions. No reporting required.",
         "badge": "#15803d",
         "student_ai_enabled": True,
         "requires_disclosure": False,
@@ -42,6 +80,8 @@ ARENE_TIERS = {
     },
     "yellow": {
         "label": "Yellow — AI Allowed Within Bounds & Reported",
+        "short_title": "Yellow · AI With Rules",
+        "short_desc": "Allowed within your boundaries. Must be documented and reported.",
         "badge": "#b45309",
         "student_ai_enabled": True,
         "requires_disclosure": True,
@@ -49,10 +89,12 @@ ARENE_TIERS = {
     },
     "red": {
         "label": "Red — AI Prohibited",
+        "short_title": "Red · No AI",
+        "short_desc": "No AI for graded work. Relies on independent and oral/process checks.",
         "badge": "#b91c1c",
         "student_ai_enabled": False,
         "requires_disclosure": False,
-        "rule": "AI must not be used to create graded work. This prototype turns off AI Coach feedback under the Red rule; assessment relies on your own process notes and independent or oral verification.",
+        "rule": "AI must not be used to create graded work. This prototype disables AI Coach feedback under the Red tier; assessment relies on independent process evidence and oral or controlled verification.",
     },
 }
 
@@ -149,3 +191,209 @@ SAMPLE_ASSIGNMENTS = [
         "sample_ai_disclosure": "",
     },
 ]
+
+
+def validate_assignment_inputs(
+    title: Any,
+    learning_outcomes: Any,
+    assignment_text: Any,
+    arene_tier: Any,
+    custom_ai_rules: Any = "",
+) -> Dict[str, str]:
+    if (
+        not isinstance(title, str)
+        or not isinstance(learning_outcomes, str)
+        or not isinstance(assignment_text, str)
+    ):
+        raise ValueError("Title, learning outcomes, and assignment text are required.")
+
+    clean_title = title.strip()
+    clean_outcomes = learning_outcomes.strip()
+    clean_assignment = assignment_text.strip()
+    clean_tier = arene_tier.strip().lower() if isinstance(arene_tier, str) else ""
+
+    if custom_ai_rules is None:
+        clean_rules = ""
+    elif isinstance(custom_ai_rules, str):
+        clean_rules = custom_ai_rules.strip()
+    else:
+        raise ValueError("Course-specific AI rules must be a string.")
+
+    if not clean_title or not clean_outcomes or not clean_assignment:
+        raise ValueError("Title, learning outcomes, and assignment text are required.")
+    if len(clean_title) > MAX_SHORT_LEN:
+        raise ValueError(f"Title must be {MAX_SHORT_LEN} characters or fewer.")
+    if (
+        len(clean_outcomes) > MAX_TEXT_LEN
+        or len(clean_assignment) > MAX_TEXT_LEN
+        or len(clean_rules) > MAX_TEXT_LEN
+    ):
+        raise ValueError(f"Inputs must be {MAX_TEXT_LEN} characters or fewer.")
+    if clean_tier not in ARENE_TIERS:
+        raise ValueError("A valid Arene AI tier (blue, green, yellow, red) is required.")
+
+    return {
+        "title": clean_title,
+        "learning_outcomes": clean_outcomes,
+        "assignment_text": clean_assignment,
+        "arene_tier": clean_tier,
+        "custom_ai_rules": clean_rules,
+    }
+
+
+def validate_checkpoint(raw_cp: Any, max_len: int = MAX_TEXT_LEN) -> Optional[Dict[str, str]]:
+    if not isinstance(raw_cp, dict):
+        return None
+    cleaned: Dict[str, str] = {}
+    for field in REQUIRED_CHECKPOINT_FIELDS:
+        val = raw_cp.get(field)
+        if not isinstance(val, str) or not val.strip():
+            return None
+        text = val.strip()
+        if len(text) > max_len:
+            return None
+        cleaned[field] = text
+    return cleaned
+
+
+def _require_clean_str(val: Any, label: str, max_len: int = MAX_TEXT_LEN) -> str:
+    if not isinstance(val, str) or not val.strip():
+        raise ValueError(f"{label} is required.")
+    text = val.strip()
+    if len(text) > max_len:
+        raise ValueError(f"{label} must be {max_len} characters or fewer.")
+    return text
+
+
+def validate_and_render_blueprint(
+    title: str,
+    learning_outcomes: str,
+    assignment_text: str,
+    arene_tier: str,
+    custom_ai_rules: str,
+    analysis: Any,
+) -> str:
+    fields = validate_assignment_inputs(
+        title=title,
+        learning_outcomes=learning_outcomes,
+        assignment_text=assignment_text,
+        arene_tier=arene_tier,
+        custom_ai_rules=custom_ai_rules,
+    )
+    if not isinstance(analysis, dict):
+        raise ValueError("A valid analysis object is required for export.")
+
+    alert = analysis.get("misalignment_alert")
+    factors = analysis.get("factors")
+    checkpoints = analysis.get("proposed_checkpoints")
+    disclosure = analysis.get("arene_disclosure_note")
+
+    if not isinstance(alert, dict):
+        raise ValueError("Analysis payload is incomplete or malformed.")
+    alert_summary = _require_clean_str(alert.get("summary"), "Alignment summary")
+    raw_status = alert.get("status")
+    if not isinstance(raw_status, str) or raw_status.strip().lower() not in CANONICAL_ALIGNMENT_STATUS:
+        raise ValueError("Analysis payload is incomplete or malformed.")
+    canonical_alert_status = CANONICAL_ALIGNMENT_STATUS[raw_status.strip().lower()]
+
+    if not isinstance(factors, list) or len(factors) != 6:
+        raise ValueError("Analysis payload is incomplete or malformed.")
+    if not isinstance(checkpoints, list) or len(checkpoints) != 3:
+        raise ValueError("Analysis payload is incomplete or malformed.")
+
+    disclosure_text = _require_clean_str(disclosure, "Student AI disclosure note")
+
+    validated_factors: List[Dict[str, str]] = []
+    for f in factors:
+        if not isinstance(f, dict):
+            raise ValueError("One or more P-MFA factor entries are invalid.")
+        raw_cov = f.get("coverage")
+        if not isinstance(raw_cov, str) or raw_cov.strip().lower() not in CANONICAL_COVERAGE:
+            raise ValueError("One or more P-MFA factor entries are invalid.")
+        name = _require_clean_str(f.get("name"), "Factor name", MAX_SHORT_LEN)
+        diagnosis = _require_clean_str(f.get("diagnosis"), "Factor observation")
+        recommendation = _require_clean_str(f.get("recommendation"), "Factor recommendation")
+        evidence_basis = ""
+        if isinstance(f.get("evidence_basis"), str) and f["evidence_basis"].strip():
+            evidence_basis = f["evidence_basis"].strip()
+            if len(evidence_basis) > MAX_TEXT_LEN:
+                raise ValueError("Factor evidence basis is too long.")
+        validated_factors.append(
+            {
+                "name": name,
+                "coverage": CANONICAL_COVERAGE[raw_cov.strip().lower()],
+                "evidence_basis": evidence_basis,
+                "diagnosis": diagnosis,
+                "recommendation": recommendation,
+            }
+        )
+
+    validated_checkpoints: List[Dict[str, str]] = []
+    for cp in checkpoints:
+        cleaned_cp = validate_checkpoint(cp)
+        if cleaned_cp is None:
+            raise ValueError("One or more checkpoint entries are incomplete or invalid.")
+        validated_checkpoints.append(cleaned_cp)
+
+    tier_label = ARENE_TIERS[fields["arene_tier"]]["label"]
+    lines = [
+        f"# P-MFA Assessment Blueprint: {fields['title']}",
+        "",
+        f"**Student Arene AI Policy Tier:** {tier_label}",
+    ]
+    if fields["custom_ai_rules"]:
+        lines.append(f"**Course-Specific AI Boundaries:** {fields['custom_ai_rules']}")
+
+    lines.extend(
+        [
+            "",
+            "## 1. Learning Outcomes",
+            fields["learning_outcomes"],
+            "",
+            "## 2. Original Assignment Instructions",
+            fields["assignment_text"],
+            "",
+            f"## 3. Constructive Alignment Observations ({canonical_alert_status})",
+            alert_summary,
+            "",
+        ]
+    )
+
+    specific_gaps = alert.get("specific_gaps")
+    if isinstance(specific_gaps, list):
+        for gap in specific_gaps:
+            if isinstance(gap, str) and gap.strip():
+                lines.append(f"- {gap.strip()[:MAX_TEXT_LEN]}")
+
+    lines.extend(["", "## 4. Six-Factor P-MFA Design Coverage (Lecturer-Reviewed Draft)"])
+    for f in validated_factors:
+        lines.append(f"### {f['name']} — *{f['coverage']}*")
+        if f["evidence_basis"]:
+            lines.append(f"- **Evidence Basis:** {f['evidence_basis']}")
+        lines.append(f"- **Observation:** {f['diagnosis']}")
+        lines.append(f"- **Suggested Adjustment:** {f['recommendation']}")
+        lines.append("")
+
+    lines.append("## 5. Process Checkpoints (Lecturer-Reviewed & Editable)")
+    for idx, cp in enumerate(validated_checkpoints, start=1):
+        lines.extend(
+            [
+                f"### Checkpoint {idx}: {cp['title']} ({cp['timing']})",
+                f"- **Task Prompt:** {cp['student_prompt']}",
+                f"- **Reflection Question:** {cp['reflection_question']}",
+                f"- **Evidence Artifact:** {cp['evidence_artifact']}",
+                "",
+            ]
+        )
+
+    lines.extend(
+        [
+            "## 6. Student AI Policy & Disclosure Draft",
+            disclosure_text,
+            "",
+            "_Note: Generated as an editable design draft inspired by P-MFA (Hämäläinen & Leiviskä, 2025). Final pedagogical and grading judgment rests with the instructor._",
+            "",
+        ]
+    )
+
+    return "\n".join(lines)

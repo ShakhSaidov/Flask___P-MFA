@@ -3,14 +3,12 @@ import time
 from collections import defaultdict, deque
 from pathlib import Path
 from threading import Lock
-from typing import Any, Dict, Optional
+from typing import Any, Dict, Optional, Tuple
 
 from dotenv import load_dotenv
 from flask import Flask, jsonify, request, send_from_directory
 
 from .llm_service import (
-    CANONICAL_ALIGNMENT_STATUS,
-    CANONICAL_COVERAGE,
     LLMServiceError,
     analyze_assignment,
     get_active_provider,
@@ -20,23 +18,19 @@ from .pii_guard import mask_pii
 from .pmfa_framework import (
     ARENE_TIERS,
     EVIDENCE_FORMAT_OPTIONS,
+    MAX_SHORT_LEN,
+    MAX_TEXT_LEN,
     PMFA_FACTORS,
     SAMPLE_ASSIGNMENTS,
+    validate_and_render_blueprint,
+    validate_assignment_inputs,
+    validate_checkpoint,
 )
 
 BASE_DIR = Path(__file__).resolve().parent
 load_dotenv(BASE_DIR / ".env")
 
 STATIC_DIST_DIR = BASE_DIR / "static_dist"
-MAX_TEXT_LEN = 4000
-MAX_SHORT_LEN = 400
-REQUIRED_CHECKPOINT_FIELDS = (
-    "title",
-    "timing",
-    "student_prompt",
-    "reflection_question",
-    "evidence_artifact",
-)
 
 
 class SimpleRateLimiter:
@@ -45,21 +39,30 @@ class SimpleRateLimiter:
     def __init__(self, max_requests: int = 30, window_seconds: int = 3600, max_tracked_ips: int = 5000):
         self.max_requests = max_requests
         self.window_seconds = window_seconds
-        self.max_tracked_ips = max_tracked_ips
+        self.max_tracked_ips = max(1, max_tracked_ips)
         self._hits: Dict[str, deque] = defaultdict(deque)
         self._lock = Lock()
 
     def allow(self, key: str) -> bool:
         now = time.time()
         with self._lock:
-            if len(self._hits) > self.max_tracked_ips:
+            q = self._hits.get(key)
+            if q is None and len(self._hits) >= self.max_tracked_ips:
                 stale_keys = [
-                    ip for ip, dq in self._hits.items() if not dq or (now - dq[-1] > self.window_seconds)
+                    ip for ip, dq in self._hits.items()
+                    if not dq or (now - dq[-1] > self.window_seconds)
                 ]
                 for ip in stale_keys:
                     del self._hits[ip]
+                while len(self._hits) >= self.max_tracked_ips:
+                    oldest_ip = min(
+                        self._hits,
+                        key=lambda ip: self._hits[ip][-1] if self._hits[ip] else 0.0,
+                    )
+                    del self._hits[oldest_ip]
+            if q is None:
+                q = self._hits[key]
 
-            q = self._hits[key]
             while q and now - q[0] > self.window_seconds:
                 q.popleft()
             if len(q) >= self.max_requests:
@@ -71,35 +74,57 @@ class SimpleRateLimiter:
 rate_limiter = SimpleRateLimiter(max_requests=30, window_seconds=3600)
 
 
-def _get_json_dict() -> Optional[Dict[str, Any]]:
+def _get_json_dict() -> Tuple[Optional[Dict[str, Any]], Optional[str]]:
+    if not request.data or not request.data.strip():
+        return {}, None
     body = request.get_json(silent=True)
     if body is None:
-        return {}
+        return None, "Request body must be valid JSON."
     if not isinstance(body, dict):
-        return None
-    return body
+        return None, "Request body must be a JSON object."
+    return body, None
 
 
-def _clean_str(body: Dict[str, Any], key: str, default: str = "") -> str:
+def _get_str_field(body: Dict[str, Any], key: str) -> Tuple[str, Optional[str]]:
     val = body.get(key)
+    if val is None:
+        return "", None
     if not isinstance(val, str):
-        return default
-    return val.strip()
+        return "", f"Field '{key}' must be a string."
+    return val.strip(), None
 
 
-def _validate_checkpoint_dict(raw_cp: Any) -> Optional[Dict[str, str]]:
-    if not isinstance(raw_cp, dict):
-        return None
-    cleaned: Dict[str, str] = {}
-    for field in REQUIRED_CHECKPOINT_FIELDS:
-        val = raw_cp.get(field)
-        if not isinstance(val, str) or not val.strip():
-            return None
-        text = val.strip()
-        if len(text) > MAX_TEXT_LEN:
-            return None
-        cleaned[field] = text
-    return cleaned
+def _parse_assignment_inputs(body: Dict[str, Any]) -> Tuple[Optional[Dict[str, str]], Optional[str]]:
+    raw: Dict[str, str] = {}
+    for key in ("title", "learning_outcomes", "assignment_text", "arene_tier", "custom_ai_rules"):
+        val, err = _get_str_field(body, key)
+        if err:
+            return None, err
+        raw[key] = val
+
+    try:
+        return (
+            validate_assignment_inputs(
+                title=raw["title"],
+                learning_outcomes=raw["learning_outcomes"],
+                assignment_text=raw["assignment_text"],
+                arene_tier=raw["arene_tier"],
+                custom_ai_rules=raw["custom_ai_rules"],
+            ),
+            None,
+        )
+    except ValueError as exc:
+        return None, str(exc)
+
+
+def _mask_field_map(fields: Dict[str, str]) -> Tuple[Dict[str, str], int]:
+    masked: Dict[str, str] = {}
+    total = 0
+    for key, text in fields.items():
+        cleaned, summary = mask_pii(text)
+        masked[key] = cleaned
+        total += summary["total"]
+    return masked, total
 
 
 def create_app() -> Flask:
@@ -116,6 +141,12 @@ def create_app() -> Flask:
     @app.errorhandler(413)
     def payload_too_large(_err):
         return jsonify({"error": "Request payload exceeds the 64 KB limit."}), 413
+
+    @app.errorhandler(405)
+    def method_not_allowed(err):
+        if request.path.startswith("/api/"):
+            return jsonify({"error": "Method not allowed for this API endpoint."}), 405
+        return err
 
     @app.get("/api/health")
     def health():
@@ -139,42 +170,34 @@ def create_app() -> Flask:
 
     @app.post("/api/analyze")
     def analyze():
-        body = _get_json_dict()
-        if body is None:
-            return jsonify({"error": "Request body must be a JSON object."}), 400
+        body, json_err = _get_json_dict()
+        if json_err or body is None:
+            return jsonify({"error": json_err}), 400
 
-        title = _clean_str(body, "title")
-        learning_outcomes = _clean_str(body, "learning_outcomes")
-        assignment_text = _clean_str(body, "assignment_text")
-        arene_tier = _clean_str(body, "arene_tier").lower()
-        custom_ai_rules = _clean_str(body, "custom_ai_rules")
-
-        if not title or not learning_outcomes or not assignment_text:
-            return jsonify({"error": "Title, learning outcomes, and assignment text are required."}), 400
-        if len(title) > MAX_SHORT_LEN:
-            return jsonify({"error": f"Title must be {MAX_SHORT_LEN} characters or fewer."}), 400
-        if (
-            len(learning_outcomes) > MAX_TEXT_LEN
-            or len(assignment_text) > MAX_TEXT_LEN
-            or len(custom_ai_rules) > MAX_TEXT_LEN
-        ):
-            return jsonify({"error": f"Inputs must be {MAX_TEXT_LEN} characters or fewer."}), 400
-        if arene_tier not in ARENE_TIERS:
-            return jsonify({"error": "A valid Arene AI tier (blue, green, yellow, red) is required."}), 400
+        fields, val_err = _parse_assignment_inputs(body)
+        if val_err or fields is None:
+            return jsonify({"error": val_err}), 400
 
         if not rate_limiter.allow(_client_ip()):
             return jsonify({"error": "Hourly demo rate limit reached. Please try again later."}), 429
 
-        safe_title, mask_title = mask_pii(title)
-        safe_outcomes, mask_out = mask_pii(learning_outcomes)
-        safe_assignment, mask_assign = mask_pii(assignment_text)
-        safe_rules, mask_rules = mask_pii(custom_ai_rules)
-        total_masked = (
-            mask_title["total"] + mask_out["total"] + mask_assign["total"] + mask_rules["total"]
+        safe, total_masked = _mask_field_map(
+            {
+                "title": fields["title"],
+                "learning_outcomes": fields["learning_outcomes"],
+                "assignment_text": fields["assignment_text"],
+                "custom_ai_rules": fields["custom_ai_rules"],
+            }
         )
 
         try:
-            result = analyze_assignment(safe_title, safe_outcomes, safe_assignment, arene_tier, safe_rules)
+            result = analyze_assignment(
+                safe["title"],
+                safe["learning_outcomes"],
+                safe["assignment_text"],
+                fields["arene_tier"],
+                safe["custom_ai_rules"],
+            )
         except LLMServiceError as exc:
             return jsonify({"error": str(exc)}), exc.status_code
 
@@ -182,11 +205,11 @@ def create_app() -> Flask:
 
     @app.post("/api/student-checkin")
     def student_checkin():
-        body = _get_json_dict()
-        if body is None:
-            return jsonify({"error": "Request body must be a JSON object."}), 400
+        body, json_err = _get_json_dict()
+        if json_err or body is None:
+            return jsonify({"error": json_err}), 400
 
-        validated_cp = _validate_checkpoint_dict(body.get("checkpoint"))
+        validated_cp = validate_checkpoint(body.get("checkpoint"))
         if validated_cp is None:
             return jsonify(
                 {
@@ -197,74 +220,77 @@ def create_app() -> Flask:
                 }
             ), 400
 
-        title = _clean_str(body, "title")
-        learning_outcomes = _clean_str(body, "learning_outcomes")
-        assignment_text = _clean_str(body, "assignment_text")
-        student_draft = _clean_str(body, "student_draft")
-        chosen_evidence_format = _clean_str(body, "chosen_evidence_format")
-        arene_tier = _clean_str(body, "arene_tier").lower()
-        custom_ai_rules = _clean_str(body, "custom_ai_rules")
-        ai_disclosure = _clean_str(body, "ai_disclosure")
+        fields, val_err = _parse_assignment_inputs(body)
+        if val_err or fields is None:
+            return jsonify({"error": val_err}), 400
 
-        if not title or not learning_outcomes or not assignment_text:
-            return jsonify(
-                {"error": "Assignment title, learning outcomes, and assignment instructions are required."}
-            ), 400
+        student_fields: Dict[str, str] = {}
+        for key in ("student_draft", "chosen_evidence_format", "ai_disclosure", "disclosure_note"):
+            val, str_err = _get_str_field(body, key)
+            if str_err:
+                return jsonify({"error": str_err}), 400
+            student_fields[key] = val
+
+        student_draft = student_fields["student_draft"]
+        chosen_evidence_format = student_fields["chosen_evidence_format"]
+        ai_disclosure = student_fields["ai_disclosure"]
+        disclosure_note = student_fields["disclosure_note"]
+
         if not student_draft:
             return jsonify({"error": "Please enter a short student check-in draft first."}), 400
-        if len(title) > MAX_SHORT_LEN or len(chosen_evidence_format) > MAX_SHORT_LEN:
+        if len(chosen_evidence_format) > MAX_SHORT_LEN:
             return jsonify({"error": f"Short fields must be {MAX_SHORT_LEN} characters or fewer."}), 400
         if (
             len(student_draft) > MAX_TEXT_LEN
-            or len(learning_outcomes) > MAX_TEXT_LEN
-            or len(assignment_text) > MAX_TEXT_LEN
-            or len(custom_ai_rules) > MAX_TEXT_LEN
             or len(ai_disclosure) > MAX_TEXT_LEN
+            or len(disclosure_note) > MAX_TEXT_LEN
         ):
             return jsonify({"error": f"Text inputs must be {MAX_TEXT_LEN} characters or fewer."}), 400
-        if arene_tier not in ARENE_TIERS:
-            return jsonify({"error": "A valid Arene AI tier (blue, green, yellow, red) is required."}), 400
 
-        if ARENE_TIERS[arene_tier]["student_ai_enabled"] and not rate_limiter.allow(_client_ip()):
+        arene_tier = fields["arene_tier"]
+        ai_enabled = ARENE_TIERS[arene_tier]["student_ai_enabled"]
+
+        if ai_enabled and not rate_limiter.allow(_client_ip()):
             return jsonify({"error": "Hourly demo rate limit reached. Please try again later."}), 429
 
-        safe_title, m_title = mask_pii(title)
-        safe_outcomes, m_out = mask_pii(learning_outcomes)
-        safe_assignment, m_assign = mask_pii(assignment_text)
-        safe_draft, m_draft = mask_pii(student_draft)
-        safe_format, m_fmt = mask_pii(chosen_evidence_format)
-        safe_rules, m_rules = mask_pii(custom_ai_rules)
-        safe_disclosure, m_disc = mask_pii(ai_disclosure)
-
-        safe_cp: Dict[str, str] = {}
-        cp_masked = 0
-        for field, text in validated_cp.items():
-            cleaned, m = mask_pii(text)
-            safe_cp[field] = cleaned
-            cp_masked += m["total"]
-
-        total_masked = (
-            m_title["total"]
-            + m_out["total"]
-            + m_assign["total"]
-            + m_draft["total"]
-            + m_fmt["total"]
-            + m_rules["total"]
-            + m_disc["total"]
-            + cp_masked
-        )
+        if ai_enabled:
+            safe_fields, fields_masked = _mask_field_map(
+                {
+                    "title": fields["title"],
+                    "learning_outcomes": fields["learning_outcomes"],
+                    "assignment_text": fields["assignment_text"],
+                    "custom_ai_rules": fields["custom_ai_rules"],
+                    "student_draft": student_draft,
+                    "chosen_evidence_format": chosen_evidence_format,
+                    "ai_disclosure": ai_disclosure,
+                    "disclosure_note": disclosure_note,
+                }
+            )
+            safe_cp, cp_masked = _mask_field_map(validated_cp)
+            total_masked = fields_masked + cp_masked
+        else:
+            safe_fields = {
+                **fields,
+                "student_draft": student_draft,
+                "chosen_evidence_format": chosen_evidence_format,
+                "ai_disclosure": ai_disclosure,
+                "disclosure_note": disclosure_note,
+            }
+            safe_cp = validated_cp
+            total_masked = 0
 
         try:
             feedback = run_student_checkin(
-                title=safe_title,
-                learning_outcomes=safe_outcomes,
-                assignment_text=safe_assignment,
+                title=safe_fields["title"],
+                learning_outcomes=safe_fields["learning_outcomes"],
+                assignment_text=safe_fields["assignment_text"],
                 checkpoint=safe_cp,
-                student_draft=safe_draft,
-                chosen_evidence_format=safe_format,
+                student_draft=safe_fields["student_draft"],
+                chosen_evidence_format=safe_fields["chosen_evidence_format"],
                 arene_tier=arene_tier,
-                custom_ai_rules=safe_rules,
-                ai_disclosure=safe_disclosure,
+                custom_ai_rules=safe_fields["custom_ai_rules"],
+                ai_disclosure=safe_fields["ai_disclosure"],
+                disclosure_note=safe_fields["disclosure_note"],
             )
         except LLMServiceError as exc:
             return jsonify({"error": str(exc)}), exc.status_code
@@ -273,145 +299,50 @@ def create_app() -> Flask:
             {
                 "feedback": feedback,
                 "pii_masked_count": total_masked,
-                "ai_assisted": ARENE_TIERS[arene_tier]["student_ai_enabled"],
+                "ai_assisted": ai_enabled,
             }
         )
 
     @app.post("/api/export")
     def export_blueprint():
-        body = _get_json_dict()
-        if body is None:
-            return jsonify({"error": "Request body must be a JSON object."}), 400
+        body, json_err = _get_json_dict()
+        if json_err or body is None:
+            return jsonify({"error": json_err}), 400
 
-        title = _clean_str(body, "title")
-        learning_outcomes = _clean_str(body, "learning_outcomes")
-        assignment_text = _clean_str(body, "assignment_text")
-        arene_tier = _clean_str(body, "arene_tier").lower()
-        custom_ai_rules = _clean_str(body, "custom_ai_rules")
+        fields, val_err = _parse_assignment_inputs(body)
+        if val_err or fields is None:
+            return jsonify({"error": val_err}), 400
 
-        if not title or not learning_outcomes or not assignment_text:
-            return jsonify({"error": "Title, learning outcomes, and assignment text are required for export."}), 400
-        if arene_tier not in ARENE_TIERS:
-            return jsonify({"error": "A valid Arene AI tier (blue, green, yellow, red) is required for export."}), 400
-
-        analysis = body.get("analysis")
-        if not isinstance(analysis, dict):
-            return jsonify({"error": "A valid analysis object is required for export."}), 400
-
-        alert = analysis.get("misalignment_alert")
-        factors = analysis.get("factors")
-        checkpoints = analysis.get("proposed_checkpoints")
-        disclosure = analysis.get("arene_disclosure_note")
-
-        if (
-            not isinstance(alert, dict)
-            or not isinstance(alert.get("summary"), str)
-            or not alert["summary"].strip()
-            or not isinstance(alert.get("status"), str)
-            or alert["status"].strip().lower() not in CANONICAL_ALIGNMENT_STATUS
-            or not isinstance(factors, list)
-            or len(factors) != 6
-            or not isinstance(checkpoints, list)
-            or len(checkpoints) != 3
-            or not isinstance(disclosure, str)
-            or not disclosure.strip()
-        ):
-            return jsonify({"error": "Analysis payload is incomplete or malformed."}), 400
-
-        for f in factors:
-            if (
-                not isinstance(f, dict)
-                or not isinstance(f.get("name"), str)
-                or not f["name"].strip()
-                or not isinstance(f.get("coverage"), str)
-                or f["coverage"].strip().lower() not in CANONICAL_COVERAGE
-                or not isinstance(f.get("diagnosis"), str)
-                or not f["diagnosis"].strip()
-                or not isinstance(f.get("recommendation"), str)
-                or not f["recommendation"].strip()
-            ):
-                return jsonify({"error": "One or more P-MFA factor entries are invalid."}), 400
-
-        for cp in checkpoints:
-            if _validate_checkpoint_dict(cp) is None:
-                return jsonify({"error": "One or more checkpoint entries are incomplete or invalid."}), 400
-
-        tier_label = ARENE_TIERS[arene_tier]["label"]
-        canonical_alert_status = CANONICAL_ALIGNMENT_STATUS[alert["status"].strip().lower()]
-
-        lines = [
-            f"# P-MFA Assessment Blueprint: {title}",
-            "",
-            f"**Student Arene AI Policy Tier:** {tier_label}",
-        ]
-        if custom_ai_rules:
-            lines.append(f"**Teacher-Defined AI Boundaries:** {custom_ai_rules}")
-
-        lines.extend(
-            [
-                "",
-                "## 1. Learning Outcomes",
-                learning_outcomes,
-                "",
-                "## 2. Original Assignment Instructions",
-                assignment_text,
-                "",
-                f"## 3. Constructive Alignment Observations ({canonical_alert_status})",
-                alert["summary"].strip(),
-                "",
-            ]
-        )
-        specific_gaps = alert.get("specific_gaps")
-        if isinstance(specific_gaps, list):
-            for gap in specific_gaps:
-                if isinstance(gap, str) and gap.strip():
-                    lines.append(f"- {gap.strip()}")
-
-        lines.extend(["", "## 4. Six-Factor P-MFA Design Coverage (Preliminary AI Observations)"])
-        for f in factors:
-            canonical_coverage = CANONICAL_COVERAGE[f["coverage"].strip().lower()]
-            lines.append(f"### {f['name'].strip()} — *{canonical_coverage}*")
-            if isinstance(f.get("evidence_basis"), str) and f["evidence_basis"].strip():
-                lines.append(f"- **Evidence Basis:** {f['evidence_basis'].strip()}")
-            lines.append(f"- **Design Observation:** {f['diagnosis'].strip()}")
-            lines.append(f"- **Suggested Adjustment:** {f['recommendation'].strip()}")
-            lines.append("")
-
-        lines.append("## 5. Process Checkpoints (Teacher-Reviewed & Editable)")
-        for idx, cp in enumerate(checkpoints, start=1):
-            lines.extend(
-                [
-                    f"### Checkpoint {idx}: {cp['title'].strip()} ({cp['timing'].strip()})",
-                    f"- **Task Prompt:** {cp['student_prompt'].strip()}",
-                    f"- **Reflection Question:** {cp['reflection_question'].strip()}",
-                    f"- **Evidence Artifact:** {cp['evidence_artifact'].strip()}",
-                    "",
-                ]
+        try:
+            markdown = validate_and_render_blueprint(
+                title=fields["title"],
+                learning_outcomes=fields["learning_outcomes"],
+                assignment_text=fields["assignment_text"],
+                arene_tier=fields["arene_tier"],
+                custom_ai_rules=fields["custom_ai_rules"],
+                analysis=body.get("analysis"),
             )
+        except ValueError as exc:
+            return jsonify({"error": str(exc)}), 400
 
-        lines.extend(
-            [
-                "## 6. Draft Student AI Disclosure Policy",
-                disclosure.strip(),
-                "",
-                "_Note: Generated as an editable design draft inspired by P-MFA (Hämäläinen & Leiviskä, 2025). Final pedagogical and grading judgment rests with the instructor._",
-                "",
-            ]
-        )
-
-        return jsonify({"markdown": "\n".join(lines), "filename": "pmfa-assessment-blueprint.md"})
+        return jsonify({"markdown": markdown, "filename": "pmfa-assessment-blueprint.md"})
 
     @app.route("/api/<path:_unknown>", methods=["GET", "POST", "PUT", "DELETE", "PATCH"])
     def api_not_found(_unknown: str):
+        for rule in app.url_map.iter_rules():
+            if rule.endpoint != "api_not_found" and rule.rule == request.path:
+                return jsonify({"error": "Method not allowed for this API endpoint."}), 405
         return jsonify({"error": "API endpoint not found."}), 404
 
     @app.route("/", defaults={"path": ""})
     @app.route("/<path:path>")
     def serve_frontend(path: str):
         if STATIC_DIST_DIR.exists():
-            target = STATIC_DIST_DIR / path
-            if path and target.exists() and target.is_file():
-                return send_from_directory(STATIC_DIST_DIR, path)
+            resolved_root = STATIC_DIST_DIR.resolve()
+            if path:
+                target = (STATIC_DIST_DIR / path).resolve()
+                if target.is_relative_to(resolved_root) and target.is_file():
+                    return send_from_directory(STATIC_DIST_DIR, path)
             index_file = STATIC_DIST_DIR / "index.html"
             if index_file.exists():
                 return send_from_directory(STATIC_DIST_DIR, "index.html")

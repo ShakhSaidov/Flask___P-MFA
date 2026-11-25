@@ -12,10 +12,22 @@ const STATUS_LABELS = {
   "Potential Alignment Gap": "Gap Found",
 };
 
+const REQUIRED_CHECKPOINT_FIELDS = [
+  "title",
+  "timing",
+  "evidence_artifact",
+  "student_prompt",
+  "reflection_question",
+];
+
 function coverageClass(cov) {
   if (cov === "Explicitly Evidenced") return "pill cov-strong";
   if (cov === "Implicit / Unverified") return "pill cov-partial";
   return "pill cov-missing";
+}
+
+function isEmptyField(cp, field) {
+  return typeof cp?.[field] !== "string" || !cp[field].trim();
 }
 
 export default function AnalysisBoard({
@@ -30,6 +42,7 @@ export default function AnalysisBoard({
   onUpdateDisclosure,
   onExportMarkdown,
   exportedMarkdown,
+  exportError = "",
   onOpenStudentPreview,
 }) {
   const [exporting, setExporting] = useState(false);
@@ -45,40 +58,29 @@ export default function AnalysisBoard({
       ? "cov-partial"
       : "cov-missing";
   const statusLabel = STATUS_LABELS[alert.status] || alert.status;
-
   const providerLabel = activeProvider === "ollama" ? "local Ollama" : "external AI";
 
-  const requiredCheckpointFields = [
-    "title",
-    "timing",
-    "evidence_artifact",
-    "student_prompt",
-    "reflection_question",
-  ];
+  const incompleteCheckpointNumbers = (analysis.proposed_checkpoints || []).reduce(
+    (missing, checkpoint, index) => {
+      if (REQUIRED_CHECKPOINT_FIELDS.some((field) => isEmptyField(checkpoint, field))) {
+        missing.push(index + 1);
+      }
+      return missing;
+    },
+    []
+  );
 
-  const incompleteCheckpointNumbers = (
-    analysis.proposed_checkpoints || []
-  ).reduce((missing, checkpoint, index) => {
-    const hasEmptyField = requiredCheckpointFields.some(
-      (field) =>
-        typeof checkpoint?.[field] !== "string" ||
-        !checkpoint[field].trim()
-    );
+  const hasIncompleteCheckpoints = incompleteCheckpointNumbers.length > 0;
+  const isDisclosureEmpty =
+    typeof analysis.arene_disclosure_note !== "string" ||
+    !analysis.arene_disclosure_note.trim();
+  const isActionBlocked =
+    isAnalysisStale || hasIncompleteCheckpoints || isDisclosureEmpty;
 
-    if (hasEmptyField) {
-      missing.push(index + 1);
-    }
-
-    return missing;
-  }, []);
-
-  const hasIncompleteCheckpoints =
-    incompleteCheckpointNumbers.length > 0;
-
-  const handleExport = async () => {
+  const handleExport = async (shouldDownload = true) => {
     setExporting(true);
     try {
-      await onExportMarkdown();
+      await onExportMarkdown(shouldDownload);
     } finally {
       setExporting(false);
     }
@@ -86,7 +88,6 @@ export default function AnalysisBoard({
 
   const handleCopy = async () => {
     if (!exportedMarkdown || !navigator.clipboard?.writeText) return;
-
     try {
       await navigator.clipboard.writeText(exportedMarkdown);
       setCopied(true);
@@ -101,7 +102,7 @@ export default function AnalysisBoard({
       {isAnalysisStale && (
         <div className="warn-banner row-between">
           <span>
-            You changed the assignment. Re-run the check to update these results before exporting or testing Student View.
+            The assignment details changed. Re-run the alignment check before exporting or opening Student View.
           </span>
           <button type="button" className="btn-secondary" onClick={onBackToSetup}>
             Re-run Check
@@ -111,7 +112,7 @@ export default function AnalysisBoard({
 
       {piiMaskedCount > 0 && (
         <div className="info-banner">
-          Privacy check hid <strong>{piiMaskedCount}</strong> personal detail(s) (email, phone, or Finnish ID) before sending to {providerLabel}.
+          Privacy check masked <strong>{piiMaskedCount}</strong> identifier(s) (email, phone, or Finnish ID) before sending to {providerLabel}.
         </div>
       )}
 
@@ -126,7 +127,7 @@ export default function AnalysisBoard({
               Alignment Check
             </h2>
             <p className="section-sub">
-              Do your task and final deliverable actually prove the learning outcomes?
+              Preliminary check of how well the task and deliverable evidence the learning outcomes.
             </p>
           </div>
           <div className="btn-row">
@@ -147,12 +148,12 @@ export default function AnalysisBoard({
         )}
       </section>
 
-      {/* 2. Six P-MFA Factors */}
+      {/* 2. Six P-MFA Dimensions */}
       <section className="board-section">
         <div>
-          <h3 className="section-title">6 Checks for Real Learning (P-MFA)</h3>
+          <h3 className="section-title">Six P-MFA Dimensions</h3>
           <p className="section-sub">
-            AI can fake a polished final essay. These 6 checks show what your task actually verifies. Change any rating if you disagree.
+            What the prompt explicitly verifies versus what a polished final submission could mask. Adjust any rating as needed.
           </p>
         </div>
 
@@ -168,14 +169,14 @@ export default function AnalysisBoard({
                 </div>
                 {f.evidence_basis && (
                   <p className="factor-evidence">
-                    <span className="factor-kicker">In your prompt:</span> {f.evidence_basis}
+                    <span className="factor-kicker">In prompt:</span> {f.evidence_basis}
                   </p>
                 )}
                 <p className="factor-text">
-                  <span className="factor-kicker">What&apos;s happening:</span> {f.diagnosis}
+                  <span className="factor-kicker">Observation:</span> {f.diagnosis}
                 </p>
                 <p className="factor-rec">
-                  <span className="factor-kicker">How to improve:</span> {f.recommendation}
+                  <span className="factor-kicker">Suggested fix:</span> {f.recommendation}
                 </p>
               </div>
               <div className="override-row">
@@ -200,47 +201,38 @@ export default function AnalysisBoard({
 
       {/* 3. Checkpoints */}
       <section className="board-section">
-        <div className="row-between">
-          <div>
-            <h3 className="section-title">3 Checkpoints</h3>
-            <p className="section-sub">
-              Break the final deadline into 3 visible steps. Edit any box below before testing the Student View.
-            </p>
-          </div>
-          <button
-            type="button"
-            className="btn-primary"
-            onClick={onOpenStudentPreview}
-            disabled={isAnalysisStale || hasIncompleteCheckpoints}
-          >
-            Test Student View →
-          </button>
+        <div>
+          <h3 className="section-title">Three Process Checkpoints</h3>
+          <p className="section-sub">
+            Staged milestones making student reasoning observable before the final deadline. All fields are editable.
+          </p>
         </div>
 
         {hasIncompleteCheckpoints && (
-          <div className="warn-banner" role="alert">
+          <div className="warn-banner" role="alert" style={{ marginTop: 14 }}>
             <strong>Incomplete checkpoints:</strong>{" "}
             Complete all five required fields in checkpoint(s){" "}
-            {incompleteCheckpointNumbers.join(", ")} before exporting
-            the plan or opening Student View.
+            {incompleteCheckpointNumbers.join(", ")} before exporting the plan or opening Student View.
           </div>
         )}
 
         <div className="timeline-list">
           {(analysis.proposed_checkpoints || []).map((cp, idx) => (
-            <div key={idx} className="timeline-item">
+            <div key={`cp-${idx}`} className="timeline-item">
               <div className="timeline-marker" aria-hidden="true">
                 {idx + 1}
               </div>
 
               <div className="cp-card-wide">
-                <div className="cp-header-grid">
+                <div className="cp-meta-grid">
                   <div className="field-group">
                     <label htmlFor={`cp-title-${idx}`}>Checkpoint {idx + 1} Title</label>
                     <input
                       id={`cp-title-${idx}`}
                       type="text"
-                      className="inline-input"
+                      maxLength={4000}
+                      aria-invalid={isEmptyField(cp, "title")}
+                      className={`inline-input ${isEmptyField(cp, "title") ? "input-invalid" : ""}`}
                       value={cp.title}
                       onChange={(e) => onUpdateCheckpoint(idx, "title", e.target.value)}
                     />
@@ -250,21 +242,28 @@ export default function AnalysisBoard({
                     <input
                       id={`cp-timing-${idx}`}
                       type="text"
-                      className="inline-input"
+                      maxLength={4000}
+                      aria-invalid={isEmptyField(cp, "timing")}
+                      className={`inline-input ${isEmptyField(cp, "timing") ? "input-invalid" : ""}`}
                       value={cp.timing}
                       onChange={(e) => onUpdateCheckpoint(idx, "timing", e.target.value)}
                     />
                   </div>
-                  <div className="field-group">
-                    <label htmlFor={`cp-artifact-${idx}`}>What Students Hand In</label>
-                    <input
-                      id={`cp-artifact-${idx}`}
-                      type="text"
-                      className="inline-input"
-                      value={cp.evidence_artifact}
-                      onChange={(e) => onUpdateCheckpoint(idx, "evidence_artifact", e.target.value)}
-                    />
-                  </div>
+                </div>
+
+                <div className="field-group">
+                  <label htmlFor={`cp-artifact-${idx}`}>What Students Hand In</label>
+                  <textarea
+                    id={`cp-artifact-${idx}`}
+                    rows={2}
+                    maxLength={4000}
+                    aria-invalid={isEmptyField(cp, "evidence_artifact")}
+                    className={`inline-input cp-artifact-textarea ${
+                      isEmptyField(cp, "evidence_artifact") ? "input-invalid" : ""
+                    }`}
+                    value={cp.evidence_artifact}
+                    onChange={(e) => onUpdateCheckpoint(idx, "evidence_artifact", e.target.value)}
+                  />
                 </div>
 
                 <div className="form-grid-2">
@@ -273,7 +272,11 @@ export default function AnalysisBoard({
                     <textarea
                       id={`cp-prompt-${idx}`}
                       rows={4}
-                      className="inline-input cp-textarea"
+                      maxLength={4000}
+                      aria-invalid={isEmptyField(cp, "student_prompt")}
+                      className={`inline-input cp-textarea ${
+                        isEmptyField(cp, "student_prompt") ? "input-invalid" : ""
+                      }`}
                       value={cp.student_prompt}
                       onChange={(e) => onUpdateCheckpoint(idx, "student_prompt", e.target.value)}
                     />
@@ -284,7 +287,11 @@ export default function AnalysisBoard({
                     <textarea
                       id={`cp-reflection-${idx}`}
                       rows={4}
-                      className="inline-input cp-textarea"
+                      maxLength={4000}
+                      aria-invalid={isEmptyField(cp, "reflection_question")}
+                      className={`inline-input cp-textarea ${
+                        isEmptyField(cp, "reflection_question") ? "input-invalid" : ""
+                      }`}
                       value={cp.reflection_question}
                       onChange={(e) => onUpdateCheckpoint(idx, "reflection_question", e.target.value)}
                     />
@@ -299,30 +306,50 @@ export default function AnalysisBoard({
       {/* 4. AI Rule & Export */}
       <section className="board-section">
         <label htmlFor="disclosure-note" className="section-title" style={{ display: "block" }}>
-          AI Rule for Students
+          Student AI Policy &amp; Disclosure Draft
         </label>
         <p className="section-sub" style={{ marginBottom: 12 }}>
-          Review or edit the rule students will see, then download your full assignment plan.
+          Review or edit the guidance shown to students in Student View and included in your exported Markdown blueprint.
         </p>
 
         <textarea
           id="disclosure-note"
           rows={3}
+          maxLength={4000}
+          aria-invalid={isDisclosureEmpty}
+          className={isDisclosureEmpty ? "input-invalid" : ""}
           style={{ minHeight: 88 }}
           value={analysis.arene_disclosure_note || ""}
           onChange={(e) => onUpdateDisclosure(e.target.value)}
         />
+
+        {isDisclosureEmpty && (
+          <div className="warn-banner" role="alert" style={{ marginTop: 10 }}>
+            <strong>Disclosure guidance required:</strong>{" "}
+            Enter a student AI policy &amp; disclosure rule before exporting or opening Student View.
+          </div>
+        )}
 
         <div className="row-between" style={{ marginTop: 14 }}>
           <button
             type="button"
             className="btn-secondary"
             onClick={onOpenStudentPreview}
-            disabled={isAnalysisStale || hasIncompleteCheckpoints}
+            disabled={isActionBlocked}
           >
-            Test Student View
+            Test Student View →
           </button>
           <div className="btn-row">
+            {!exportedMarkdown && (
+              <button
+                type="button"
+                className="btn-secondary"
+                onClick={() => handleExport(false)}
+                disabled={exporting || isActionBlocked}
+              >
+                {exporting ? "Preparing..." : "Preview Markdown"}
+              </button>
+            )}
             {exportedMarkdown && (
               <button type="button" className="btn-secondary" onClick={handleCopy}>
                 {copied ? "Copied" : "Copy Markdown"}
@@ -331,17 +358,23 @@ export default function AnalysisBoard({
             <button
               type="button"
               className="btn-primary"
-              onClick={handleExport}
-              disabled={exporting || isAnalysisStale || hasIncompleteCheckpoints}
+              onClick={() => handleExport(true)}
+              disabled={exporting || isActionBlocked}
             >
               {exporting ? "Creating Plan..." : "Download Plan (.md)"}
             </button>
           </div>
         </div>
 
+        {exportError && (
+          <div className="error-banner" role="alert" style={{ marginTop: 12, marginBottom: 0 }}>
+            {exportError}
+          </div>
+        )}
+
         {exportedMarkdown && (
-          <details className="export-details">
-            <summary>Preview Markdown plan (pmfa-assessment-blueprint.md)</summary>
+          <details className="export-details" open>
+            <summary>Markdown blueprint preview (pmfa-assessment-blueprint.md)</summary>
             <pre className="export-pre">{exportedMarkdown}</pre>
           </details>
         )}

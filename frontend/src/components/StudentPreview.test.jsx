@@ -316,4 +316,42 @@ describe("StudentPreview", () => {
       screen.queryByText("Previous feedback.")
     ).not.toBeInTheDocument();
   });
+
+  it("displays and forwards the lecturer's disclosure guidance from Review", async () => {
+    fetch.mockResolvedValueOnce(
+      mockResponse({
+        ai_assisted: true,
+        pii_masked_count: 0,
+        feedback: {
+          strengths: ["Good progress."],
+          probing_questions: ["How did you verify edge cases?"],
+          evidence_coaching: "Keep your prompt log.",
+          alignment_warning: "Aligned.",
+          policy_reminder: "Blue rule.",
+        },
+      })
+    );
+
+    const props = makeProps("blue");
+    props.analysis.arene_disclosure_note =
+      "Report every AI prompt and verification step in your 1-page summary.";
+
+    render(<StudentPreview {...props} />);
+
+    expect(
+      screen.getByText(
+        "Report every AI prompt and verification step in your 1-page summary."
+      )
+    ).toBeInTheDocument();
+
+    fireEvent.click(
+      screen.getByRole("button", { name: "Ask Coach for Feedback" })
+    );
+
+    await waitFor(() => expect(fetch).toHaveBeenCalled());
+    const requestBody = JSON.parse(fetch.mock.calls[0][1].body);
+    expect(requestBody.disclosure_note).toBe(
+      "Report every AI prompt and verification step in your 1-page summary."
+    );
+  });
 });

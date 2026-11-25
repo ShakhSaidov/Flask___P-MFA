@@ -1,28 +1,44 @@
 # P-MFA Studio
 
-A small Flask + React R&D prototype exploring **process-oriented assignment design** inspired by *Pedagogical Multi-Factor Assessment (P-MFA)* (Hämäläinen & Leiviskä, 2025) and **Metropolia / Arene AI traffic-light guidelines** (Blue, Green, Yellow, Red).
+A small Flask + React R&D prototype exploring **process-oriented assignment design** grounded in *Pedagogical Multi-Factor Assessment (P-MFA)* (Hämäläinen & Leiviskä, 2025) and **Metropolia / Arene AI traffic-light guidelines** (Blue, Green, Yellow, Red).
 
-> **Prototype Scope:** P-MFA Studio is an exploratory R&D prototype inspired by selected P-MFA principles—not a validated institutional implementation, automated grading tool, or persistent LMS integration. All sample scenarios are illustrative synthetic examples.
-
----
-
-## Why This Problem
-
-Rather than building another Q&A chatbot or document summarizer, P-MFA Studio tackles a harder assessment problem: when generative AI can produce polished final essays or code, grading solely on a single end-of-course submission loses visibility into authentic learning.
-
-The app models a three-step workflow:
-1. **Assignment:** Lecturers enter an assignment's learning outcomes, task prompt, and **Arene AI Traffic Light** tier (*Blue, Green, Yellow, Red*), or load one of four discipline presets.
-2. **Review:** Audits constructive alignment across the six P-MFA dimensions (*Knowledge, Outputs, Application, Process Continuity, Self-Evaluation, Situated Understanding*), flags what is clearly covered vs. missing in the prompt, and drafts **3 editable checkpoints** plus an editable student AI rule for Markdown export.
-3. **Student View:** Lets users test a checkpoint check-in as a student—choosing how to evidence their work and seeing **server-enforced policy behavior** across Arene tiers (an AI Coach that won't write the deliverable on Blue/Yellow/Green, and deterministic server-side AI lockout on Red).
+> **Prototype Scope:** P-MFA Studio is an exploratory R&D prototype inspired by selected P-MFA principles—not a validated institutional implementation, automated grading tool, or persistent LMS integration. All built-in scenarios are illustrative synthetic examples.
 
 ---
 
-## Architecture
+## Problem & Metropolia Context
 
-- **Backend (`backend/`):** Python Flask application factory (`backend/app.py`) serving a JSON REST API and built frontend assets (`backend/static_dist/`).
-- **LLM Layer (`backend/llm_service.py`):** Structured JSON-schema calls supporting both **Groq** (`openai/gpt-oss-120b` with `strict: true` and configurable `reasoning_effort`) and local **Ollama** (`LLM_PROVIDER=ollama`) via a single configuration switch.
-- **Best-Effort Pre-Check (`backend/pii_guard.py`):** Lightweight regex helper masking obvious emails, phone numbers, and Finnish personal IDs before model processing while preserving academic year ranges and ECTS credits.
-- **Frontend (`frontend/`):** React + Vite single-page workflow.
+When generative AI can produce polished final essays, reports, and code on demand, single-submission assignments suffer from a **misalignment problem**: grading solely on an end-of-course artifact loses visibility into authentic student reasoning and learning.
+
+**P-MFA Studio** lets lecturers audit an assignment brief before a course begins and test process-based checkpoints through a three-step workflow:
+1. **1. Assignment:** Enter learning outcomes, task instructions, **Arene AI Traffic Light** tier (*Blue, Green, Yellow, Red*), and optional course rules—or load one of four Metropolia-oriented synthetic presets across Technology, Culture, Health Care, and Business.
+2. **2. Review:** Audits constructive alignment across the six P-MFA dimensions (*Knowledge, Outputs, Application, Process Continuity, Self-Evaluation, Situated Understanding*), anchors each rating in prompt wording (`evidence_basis`), drafts **3 editable checkpoints** plus a student AI disclosure rule, and exports a Markdown blueprint.
+3. **3. Student View:** Lets users test a checkpoint check-in as a student—comparing **Socratic AI coaching** (Blue, Green, Yellow—guided by course boundaries without writing deliverables) against **deterministic server-side AI lockout** (Red).
+
+---
+
+## Demo Screenshots
+
+### 1. Assignment Setup & Arene Traffic Light Selection
+![Assignment Setup](docs/screenshots/01-assignment-setup.png)
+
+### 2. Six-Factor P-MFA Alignment Audit
+![Six-Factor P-MFA Audit](docs/screenshots/02-pmfa-alignment-audit.png)
+
+### 3. Editable Process Checkpoints & Markdown Blueprint Export
+![Checkpoints and Markdown Export](docs/screenshots/03-checkpoints-and-export.png)
+
+### 4. Student View — Socratic AI Coach (Yellow Tier)
+![Student Coach View](docs/screenshots/04-student-coach-yellow.png)
+
+### 5. Student View — Deterministic Red-Tier AI Lockout
+![Red Tier Lockout](docs/screenshots/05-student-red-lockout.png)
+
+---
+
+## Architecture & Technical Decisions
+
+- **Backend (`backend/`):** Python Flask application factory (`backend/app.py`) serving a JSON REST API (`/api/health`, `/api/examples`, `/api/analyze`, `/api/student-checkin`, `/api/export`) and prebuilt frontend assets (`backend/static_dist/`), protected by a 64 KB payload cap and bounded per-IP rate limiting (`SimpleRateLimiter`).
 
 ---
 
@@ -31,7 +47,7 @@ The app models a three-step workflow:
 ### 1. Backend
 ```bash
 python -m venv .venv
-# Windows: .venv\Scripts\Activate.ps1
+# Windows Powershell: .venv\Scripts\Activate.ps1
 # Linux/macOS: source .venv/bin/activate
 
 pip install -r backend/requirements.txt
@@ -70,17 +86,12 @@ cd frontend && npm test
 
 ## Potential R&D Questions
 
-- Can process-based checkpoints make student competence more visible
-  when final submissions may be AI-assisted?
-- How reliably can LLMs identify gaps between learning outcomes,
-  assignment instructions, and proposed assessment evidence?
+- Can process-based checkpoints make student competence more visible when final submissions may be AI-assisted?
+- How reliably can LLMs identify gaps between learning outcomes, assignment instructions, and proposed assessment evidence?
 - Which evidence formats are practical across different disciplines?
-- How can AI support student reflection without replacing independent
-  reasoning or producing assessed work?
+- How can AI support student reflection without replacing independent reasoning or producing assessed work?
 
-The current prototype does not collect research data or establish
-the effectiveness of these approaches. These are directions for
-future evaluation with lecturers and students.
+The current prototype does not collect research data or establish the effectiveness of these approaches. These are directions for future evaluation with lecturers and students.
 
 ---
 

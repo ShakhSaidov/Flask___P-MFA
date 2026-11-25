@@ -1,4 +1,5 @@
 import React, { useState } from "react";
+import { requestJson } from "../api.js";
 
 export default function StudentPreview({
   form,
@@ -77,7 +78,7 @@ export default function StudentPreview({
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    if (isAnalysisStale) return;
+    if (loading || isAnalysisStale) return;
     const requiredFields = [
       "title",
       "timing",
@@ -102,7 +103,7 @@ export default function StudentPreview({
     setError("");
     setLoading(true);
     try {
-      const resp = await fetch("/api/student-checkin", {
+      const data = await requestJson("/api/student-checkin", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -115,16 +116,12 @@ export default function StudentPreview({
           arene_tier: form.arene_tier,
           custom_ai_rules: form.custom_ai_rules,
           ai_disclosure: requiresDisclosure ? activeState.aiDisclosure : "",
+          disclosure_note: analysis?.arene_disclosure_note || "",
         }),
       });
-      const data = await resp.json();
-      if (!resp.ok) {
-        setError(data.error || "Check-in failed.");
-      } else {
-        updateActiveState({ result: data });
-      }
-    } catch {
-      setError("Could not reach the server. Check that Flask is running.");
+      updateActiveState({ result: data });
+    } catch (err) {
+      setError(err.message || "Check-in failed.");
     } finally {
       setLoading(false);
     }
@@ -152,7 +149,7 @@ export default function StudentPreview({
                 {form.title}
               </h2>
             </div>
-            <button type="button" className="btn-secondary" onClick={onBackToReview}>
+            <button type="button" className="btn-secondary" disabled={loading} onClick={onBackToReview}>
               ← Back to Review
             </button>
           </div>
@@ -165,6 +162,11 @@ export default function StudentPreview({
                 <strong>Course rules:</strong> {form.custom_ai_rules}
               </div>
             )}
+            {analysis?.arene_disclosure_note && (
+              <div className="tier-callout-rule tier-callout-divider">
+                <strong>Assignment disclosure guidance:</strong> {analysis.arene_disclosure_note}
+              </div>
+            )}
           </div>
 
           {checkpoints.length > 1 && (
@@ -172,6 +174,7 @@ export default function StudentPreview({
               <label htmlFor="cp-select">Choose Checkpoint</label>
               <select
                 id="cp-select"
+                disabled={loading}
                 value={selectedIdx}
                 onChange={(e) => {
                   setSelectedIdx(Number(e.target.value));
@@ -202,146 +205,162 @@ export default function StudentPreview({
           </div>
         </div>
 
-        <form className="panel stack-lg" onSubmit={handleSubmit}>
-          <div>
-            <h3 className="section-title">Try a Student Check-In</h3>
-            <p className="section-sub">
-              Pick how you&apos;ll show your progress, write a quick note, and see how the AI coach responds.
-            </p>
-          </div>
+        <form className="panel" onSubmit={handleSubmit}>
+          <fieldset disabled={loading} className="fieldset-reset stack-lg">
+            <div>
+              <h3 className="section-title">Try a Student Check-In</h3>
+              <p className="section-sub">
+                Pick how you&apos;ll evidence your progress, write a brief note, and test server-enforced AI behavior.
+              </p>
+            </div>
 
-          <div className="field-group">
-            <span className="field-label">How I&apos;ll Show My Progress</span>
-            {evidenceFormats.map((opt) => (
-              <label key={opt} className={`choice-item ${activeState.chosenFormat === opt ? "selected" : ""}`}>
+            <div className="field-group">
+              <span className="field-label">How I&apos;ll Show My Progress</span>
+              {evidenceFormats.map((opt) => (
+                <label key={opt} className={`choice-item ${activeState.chosenFormat === opt ? "selected" : ""}`}>
+                  <input
+                    type="radio"
+                    name="evidenceFormat"
+                    checked={activeState.chosenFormat === opt}
+                    onChange={() => updateActiveState({ chosenFormat: opt, result: null })}
+                  />
+                  <span>{opt}</span>
+                </label>
+              ))}
+              <label className={`choice-item ${activeState.chosenFormat === "__custom__" ? "selected" : ""}`}>
                 <input
                   type="radio"
                   name="evidenceFormat"
-                  checked={activeState.chosenFormat === opt}
-                  onChange={() => updateActiveState({ chosenFormat: opt, result: null })}
+                  checked={activeState.chosenFormat === "__custom__"}
+                  onChange={() => updateActiveState({ chosenFormat: "__custom__", result: null })}
                 />
-                <span>{opt}</span>
+                <span>Use a different format...</span>
               </label>
-            ))}
-            <label className={`choice-item ${activeState.chosenFormat === "__custom__" ? "selected" : ""}`}>
-              <input
-                type="radio"
-                name="evidenceFormat"
-                checked={activeState.chosenFormat === "__custom__"}
-                onChange={() => updateActiveState({ chosenFormat: "__custom__", result: null })}
-              />
-              <span>Use a different format...</span>
-            </label>
-            {activeState.chosenFormat === "__custom__" && (
-              <input
-                type="text"
-                aria-label="Custom progress format"
-                value={activeState.customFormat}
-                onChange={(e) => updateActiveState({ customFormat: e.target.value, result: null })}
-                placeholder="e.g., 2-minute screen recording walking through my code"
+              {activeState.chosenFormat === "__custom__" && (
+                <input
+                  type="text"
+                  maxLength={400}
+                  aria-label="Custom progress format"
+                  value={activeState.customFormat}
+                  onChange={(e) => updateActiveState({ customFormat: e.target.value, result: null })}
+                  placeholder="e.g., 2-minute screen recording walking through my code"
+                  required
+                />
+              )}
+            </div>
+
+            <div className="field-group">
+              <div className="row-between">
+                <label htmlFor="student-draft">Your Progress Note</label>
+                {sampleStudentDraft && (
+                  <button type="button" className="preset-pill" onClick={handleLoadSample}>
+                    Use Sample Note
+                  </button>
+                )}
+              </div>
+              <textarea
+                id="student-draft"
+                rows={5}
+                maxLength={4000}
+                value={activeState.draft}
+                onChange={(e) => updateActiveState({ draft: e.target.value, result: null })}
+                placeholder="What have you done so far, what choices did you make, and where are you stuck?"
                 required
               />
+            </div>
+
+            {requiresDisclosure && (
+              <div className="field-group">
+                <label htmlFor="ai-disclosure">
+                  How You Used AI ({form.arene_tier === "blue" ? "Required · Blue Rule" : "Required · Yellow Rule"})
+                </label>
+                <textarea
+                  id="ai-disclosure"
+                  rows={2}
+                  maxLength={4000}
+                  className="textarea-compact"
+                  value={activeState.aiDisclosure}
+                  onChange={(e) => updateActiveState({ aiDisclosure: e.target.value, result: null })}
+                  placeholder="Which AI tool did you use, and how did you verify its output?"
+                />
+              </div>
             )}
-          </div>
 
-          <div className="field-group">
+            {loading && (
+              <div className="info-banner status-banner" role="status" aria-live="polite">
+                <span className="spinner" aria-hidden="true" />
+                <span>
+                  {aiAllowed
+                    ? `Running Socratic check-in via ${providerLabel}...`
+                    : "Verifying Red-tier policy status..."}
+                </span>
+              </div>
+            )}
+
             <div className="row-between">
-              <label htmlFor="student-draft">Your Progress Note</label>
-              {sampleStudentDraft && (
-                <button type="button" className="preset-pill" onClick={handleLoadSample}>
-                  Use Sample Note
-                </button>
-              )}
+              <span className="privacy-foot">
+                Demo only: do not paste real student work or personal data. Obvious IDs are masked before AI calls, not fully anonymized.
+              </span>
+              <button type="submit" className="btn-primary" disabled={loading || isAnalysisStale}>
+                {loading
+                  ? "Checking..."
+                  : aiAllowed
+                  ? "Ask Coach for Feedback"
+                  : "Run Self-Check (No AI)"}
+              </button>
             </div>
-            <textarea
-              id="student-draft"
-              rows={5}
-              value={activeState.draft}
-              onChange={(e) => updateActiveState({ draft: e.target.value, result: null })}
-              placeholder="What have you done so far, what choices did you make, and where are you stuck?"
-              required
-            />
-          </div>
 
-          {requiresDisclosure && (
-            <div className="field-group">
-              <label htmlFor="ai-disclosure">
-                How You Used AI ({form.arene_tier === "blue" ? "Required · Blue Rule" : "Required · Yellow Rule"})
-              </label>
-              <textarea
-                id="ai-disclosure"
-                rows={2}
-                className="textarea-compact"
-                value={activeState.aiDisclosure}
-                onChange={(e) => updateActiveState({ aiDisclosure: e.target.value, result: null })}
-                placeholder="Which AI tool did you use, and how did you check its work?"
-              />
-            </div>
-          )}
+            {error && <div className="error-banner" role="alert">{error}</div>}
 
-          <div className="row-between">
-            <span className="privacy-foot">
-              Demo only: do not paste real student work or personal data. Obvious IDs are hidden automatically, not fully anonymized.
-            </span>
-            <button type="submit" className="btn-primary" disabled={loading || isAnalysisStale}>
-              {loading
-                ? "Checking..."
-                : aiAllowed
-                ? "Ask Coach for Feedback"
-                : "Run Self-Check (No AI)"}
-            </button>
-          </div>
+            {activeState.result && (
+              <div className="stack-lg">
+                {activeState.result.pii_masked_count > 0 && activeState.result.ai_assisted && (
+                  <div className="info-banner">
+                    Privacy check masked <strong>{activeState.result.pii_masked_count}</strong> identifier(s) before sending to {providerLabel}.
+                  </div>
+                )}
 
-          {error && <div className="error-banner">{error}</div>}
+                <div className="cp-card-wide">
+                  <div className="row-between">
+                    <strong>
+                      {activeState.result.ai_assisted ? "AI Coach Feedback" : "Self-Check Checklist"}
+                    </strong>
+                    <span className={`pill ${activeState.result.ai_assisted ? "cov-strong" : "cov-missing"}`}>
+                      {activeState.result.ai_assisted
+                        ? "Coach Mode · Won't Write for You"
+                        : "AI Off · Red Rule"}
+                    </span>
+                  </div>
 
-          {activeState.result && (
-            <div className="stack-lg">
-              {activeState.result.pii_masked_count > 0 && (
-                <div className="info-banner">
-                  Privacy check hid <strong>{activeState.result.pii_masked_count}</strong> personal detail(s) before sending to {providerLabel}.
-                </div>
-              )}
+                  <div className="feedback-body">
+                    <strong>{activeState.result.ai_assisted ? "What's working:" : "Policy status:"}</strong>
+                    <ul>
+                      {(activeState.result.feedback.strengths || []).map((s, i) => (
+                        <li key={i}>{s}</li>
+                      ))}
+                    </ul>
 
-              <div className="cp-card-wide">
-                <div className="row-between">
-                  <strong>
-                    {activeState.result.ai_assisted ? "AI Coach Feedback" : "Self-Check Checklist"}
-                  </strong>
-                  <span className={`pill ${activeState.result.ai_assisted ? "cov-strong" : "cov-missing"}`}>
-                    {activeState.result.ai_assisted
-                      ? "Coach Mode · Won't Write for You"
-                      : "AI Off · Red Rule"}
-                  </span>
-                </div>
+                    <strong>Questions to think about:</strong>
+                    <ul>
+                      {(activeState.result.feedback.probing_questions || []).map((q, i) => (
+                        <li key={i}>{q}</li>
+                      ))}
+                    </ul>
 
-                <div className="feedback-body">
-                  <strong>{activeState.result.ai_assisted ? "What's working:" : "Rule check:"}</strong>
-                  <ul>
-                    {(activeState.result.feedback.strengths || []).map((s, i) => (
-                      <li key={i}>{s}</li>
-                    ))}
-                  </ul>
-
-                  <strong>Questions to think about:</strong>
-                  <ul>
-                    {(activeState.result.feedback.probing_questions || []).map((q, i) => (
-                      <li key={i}>{q}</li>
-                    ))}
-                  </ul>
-
-                  <p>
-                    <strong>Format fit:</strong> {activeState.result.feedback.evidence_coaching}
-                  </p>
-                  <p>
-                    <strong>Rules &amp; goals:</strong> {activeState.result.feedback.alignment_warning}
-                  </p>
-                  <p className="privacy-foot" style={{ marginBottom: 0 }}>
-                    {activeState.result.feedback.policy_reminder}
-                  </p>
+                    <p>
+                      <strong>Format fit:</strong> {activeState.result.feedback.evidence_coaching}
+                    </p>
+                    <p>
+                      <strong>Rules &amp; goals:</strong> {activeState.result.feedback.alignment_warning}
+                    </p>
+                    <p className="privacy-foot" style={{ marginBottom: 0 }}>
+                      {activeState.result.feedback.policy_reminder}
+                    </p>
+                  </div>
                 </div>
               </div>
-            </div>
-          )}
+            )}
+          </fieldset>
         </form>
       </div>
     </div>

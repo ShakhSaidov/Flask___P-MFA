@@ -42,7 +42,7 @@ def _valid_raw_analysis():
 def test_pii_guard_masks_identifiers_and_preserves_non_pii_numbers():
     text = (
         "Student Matti (matti@metropolia.fi, 131052-308t, +358 40 123 4567, 040-7654321, 0401234567, 091234567) "
-        "in 00520 Helsinki studied in 2025-2026 for 10 ECTS (task ref 12345)."
+        "in 00520 Helsinki studied in 2025-2026 for 10 ECTS (task ref 12345). Submit by 01-12-2026 or 2026-12-07."
     )
     cleaned, summary = mask_pii(text)
     assert "[EMAIL_REDACTED]" in cleaned
@@ -50,6 +50,8 @@ def test_pii_guard_masks_identifiers_and_preserves_non_pii_numbers():
     assert cleaned.count("[PHONE_REDACTED]") == 4
     assert "00520" in cleaned
     assert "2025-2026" in cleaned
+    assert "01-12-2026" in cleaned
+    assert "2026-12-07" in cleaned
     assert "10 ECTS" in cleaned
     assert "12345" in cleaned
     assert summary["total"] == 6
@@ -80,6 +82,10 @@ def test_health_examples_order_and_api_404():
 
 def test_endpoints_require_explicit_valid_arene_tier_and_valid_json():
     client = app_module.app.test_client()
+    bad_json = client.post("/api/analyze", data="{not valid json", content_type="application/json")
+    assert bad_json.status_code == 400
+    assert "valid JSON" in bad_json.get_json()["error"]
+
     assert client.post("/api/analyze", json={"title": "Only title"}).status_code == 400
     assert (
         client.post(
@@ -111,6 +117,75 @@ def test_endpoints_require_explicit_valid_arene_tier_and_valid_json():
     )
 
 
+def test_non_string_fields_rejected_with_400():
+    client = app_module.app.test_client()
+    res = client.post(
+        "/api/analyze",
+        json={
+            "title": "Demo",
+            "learning_outcomes": "Outcomes",
+            "assignment_text": "Task",
+            "arene_tier": "yellow",
+            "custom_ai_rules": 123,
+        },
+    )
+    assert res.status_code == 400
+    assert "must be a string" in res.get_json()["error"]
+
+    res_cp = client.post(
+        "/api/student-checkin",
+        json={
+            "title": "Demo",
+            "learning_outcomes": "Outcomes",
+            "assignment_text": "Task",
+            "arene_tier": "yellow",
+            "checkpoint": _valid_checkpoint(),
+            "student_draft": "Draft",
+            "chosen_evidence_format": ["not-a-string"],
+        },
+    )
+    assert res_cp.status_code == 400
+    assert "must be a string" in res_cp.get_json()["error"]
+
+
+def test_api_rate_limit_429_payload_413_and_method_405(monkeypatch):
+    monkeypatch.setattr(app_module, "rate_limiter", app_module.SimpleRateLimiter(0, 3600))
+    client = app_module.app.test_client()
+
+    res_analyze_429 = client.post(
+        "/api/analyze",
+        json={
+            "title": "Demo",
+            "learning_outcomes": "Outcomes",
+            "assignment_text": "Task",
+            "arene_tier": "yellow",
+        },
+    )
+    assert res_analyze_429.status_code == 429
+
+    res_checkin_429 = client.post(
+        "/api/student-checkin",
+        json={
+            "title": "Demo",
+            "learning_outcomes": "Outcomes",
+            "assignment_text": "Task",
+            "arene_tier": "yellow",
+            "checkpoint": _valid_checkpoint(),
+            "student_draft": "Draft",
+        },
+    )
+    assert res_checkin_429.status_code == 429
+
+    oversized = b'{"title":"' + (b"a" * (65 * 1024)) + b'"}'
+    res_413 = client.post("/api/analyze", data=oversized, content_type="application/json")
+    assert res_413.status_code == 413
+    assert "64 KB" in res_413.get_json()["error"]
+
+    res_405 = client.get("/api/analyze")
+    assert res_405.status_code == 405
+    assert "Method not allowed" in res_405.get_json()["error"]
+
+
 def test_service_layer_rejects_invalid_tier_and_invalid_provider(monkeypatch):
     with pytest.raises(llm_service.LLMServiceError) as exc1:
         llm_service.analyze_assignment("T", "O", "A", "invalid-tier")
@@ -126,7 +201,7 @@ def test_service_layer_rejects_invalid_tier_and_invalid_provider(monkeypatch):
     assert exc3.value.status_code == 500
 
 
-def test_negative_phrases_are_rejected_by_normalization():
+def test_negative_phrases_and_oversized_gaps_are_rejected_by_normalization():
     bad_status = _valid_raw_analysis()
     bad_status["misalignment_alert"]["status"] = "Not well aligned"
     with pytest.raises(ValueError):
@@ -136,6 +211,24 @@ def test_negative_phrases_are_rejected_by_normalization():
     bad_coverage["factors"]["knowledge"]["coverage"] = "Not explicitly evidenced"
     with pytest.raises(ValueError):
         llm_service._validate_and_normalize_analysis(bad_coverage)
+
+    oversized_gap = _valid_raw_analysis()
+    oversized_gap["misalignment_alert"]["specific_gaps"] = ["x" * 501]
+    with pytest.raises(ValueError):
+        llm_service._validate_and_normalize_analysis(oversized_gap)
+
+
+def test_parse_json_content_handles_think_tags_fences_and_invalid_shapes():
+    wrapped = '<think>reasoning trace</think>\n```json\n{"status": "ok"}\n```'
+    assert llm_service._parse_json_content(wrapped) == {"status": "ok"}
+
+    with pytest.raises(llm_service.LLMServiceError) as exc_list:
+        llm_service._parse_json_content('["not", "an", "object"]')
+    assert exc_list.value.status_code == 502
+
+    with pytest.raises(llm_service.LLMServiceError) as exc_empty:
+        llm_service._parse_json_content("   ")
+    assert exc_empty.value.status_code == 502
 
 
 def test_analyze_masks_pii_and_returns_structured_output(monkeypatch):
@@ -184,7 +277,6 @@ def test_student_checkin_validates_checkpoint_and_passes_masked_assignment_text(
     monkeypatch.setattr(app_module, "rate_limiter", app_module.SimpleRateLimiter(30, 3600))
     client = app_module.app.test_client()
 
-    # Empty, incomplete, or oversized checkpoint rejected with 400
     assert (
         client.post(
             "/api/student-checkin",
@@ -266,8 +358,10 @@ def test_student_checkin_llm_receives_full_assignment_and_checkpoint(monkeypatch
         arene_tier="yellow",
         custom_ai_rules="Prohibited for critical appraisal.",
         ai_disclosure="",
+        disclosure_note="Include prompt logs in Appendix B.",
     )
     assert "Include 8 APA references." in captured_prompt["user"]
+    assert "Include prompt logs in Appendix B." in captured_prompt["user"]
     assert "Artifact 2" in captured_prompt["user"]
     assert "Week 4" in captured_prompt["user"]
     assert "REFUSE assistance on that prohibited activity" in captured_prompt["sys"]
@@ -291,7 +385,7 @@ def test_red_tier_enforces_zero_llm_calls_and_bypasses_rate_limit(monkeypatch):
             "learning_outcomes": "Defend stance independently",
             "assignment_text": "Write a 2,000-word take-home essay.",
             "checkpoint": _valid_checkpoint(),
-            "student_draft": "My independent outline on EU whistleblowing.",
+            "student_draft": "My independent outline on EU whistleblowing; contact me@metropolia.fi.",
             "chosen_evidence_format": "In-class / peer Q&A defense summary",
             "arene_tier": "red",
         },
@@ -299,6 +393,7 @@ def test_red_tier_enforces_zero_llm_calls_and_bypasses_rate_limit(monkeypatch):
     assert res.status_code == 200
     payload = res.get_json()
     assert payload["ai_assisted"] is False
+    assert payload["pii_masked_count"] == 0
     assert "not saved" in payload["feedback"]["evidence_coaching"].lower()
 
 
@@ -315,6 +410,7 @@ def test_rate_limiter_blocks_and_prunes_stale_ips(monkeypatch):
     assert limiter.allow("2.2.2.2") is True
     assert limiter.allow("3.3.3.3") is True
     assert "1.1.1.1" not in limiter._hits
+    assert len(limiter._hits) <= 1
 
 
 def test_export_blueprint_validates_strictly_and_preserves_edits():
@@ -355,6 +451,20 @@ def test_export_blueprint_validates_strictly_and_preserves_edits():
         == 400
     )
 
+    assert (
+        client.post(
+            "/api/export",
+            json={
+                "title": "x" * (app_module.MAX_SHORT_LEN + 1),
+                "arene_tier": "yellow",
+                "learning_outcomes": "O",
+                "assignment_text": "A",
+                "analysis": valid_analysis,
+            },
+        ).status_code
+        == 400
+    )
+
 
 def test_llm_validation_rejects_missing_factors_and_retries_incomplete_checkpoints(monkeypatch):
     incomplete_factors = _valid_raw_analysis()
@@ -379,7 +489,6 @@ def test_groq_narrow_fallback_and_ollama_timeout(monkeypatch):
     monkeypatch.setenv("GROQ_API_KEY", "test-key")
     monkeypatch.setenv("GROQ_MODEL", "openai/gpt-oss-120b")
 
-    # 1. Schema unsupported 400 -> triggers json_object fallback
     resp_schema_400 = Mock(status_code=400, text="json_schema unsupported")
     resp_schema_400.json.return_value = {"error": {"message": "This model does not support json_schema"}}
 
@@ -393,7 +502,6 @@ def test_groq_narrow_fallback_and_ollama_timeout(monkeypatch):
     out = llm_service._call_groq_json("sys", "user", {"type": "object"}, "test_schema")
     assert out == {"strengths": ["ok"]}
 
-    # 2. Bad schema / strict 400 without unsupported-feature phrase -> does NOT fall back, hides raw detail
     resp_other_400 = Mock(status_code=400, text="invalid strict schema syntax")
     resp_other_400.json.return_value = {"error": {"message": "Invalid schema property"}}
     monkeypatch.setattr(llm_service.requests, "post", lambda *args, **kwargs: resp_other_400)
@@ -401,7 +509,6 @@ def test_groq_narrow_fallback_and_ollama_timeout(monkeypatch):
         llm_service._call_groq_json("sys", "user", {"type": "object"}, "test_schema")
     assert "Invalid schema property" not in str(exc_bad.value)
 
-    # 3. Ollama path success & timeout
     monkeypatch.setenv("LLM_PROVIDER", "ollama")
     resp_ollama = Mock(status_code=200)
     resp_ollama.json.return_value = {"message": {"content": '{"ok": true}'}}
@@ -415,3 +522,42 @@ def test_groq_narrow_fallback_and_ollama_timeout(monkeypatch):
     with pytest.raises(llm_service.LLMServiceError) as exc_timeout:
         llm_service._call_structured_llm("s", "u", {}, "x")
     assert exc_timeout.value.status_code == 504
+
+
+def test_groq_error_branches_length_truncation_429_auth_and_refusal(monkeypatch):
+    monkeypatch.setenv("LLM_PROVIDER", "groq")
+    monkeypatch.setenv("GROQ_API_KEY", "test-key")
+    monkeypatch.setenv("GROQ_MODEL", "openai/gpt-oss-120b")
+
+    resp_truncated = Mock(status_code=200)
+    resp_truncated.json.return_value = {
+        "choices": [{"finish_reason": "length", "message": {"content": '{"partial": '}}]
+    }
+    monkeypatch.setattr(llm_service.requests, "post", lambda *args, **kwargs: resp_truncated)
+    with pytest.raises(llm_service.LLMServiceError) as exc_len:
+        llm_service._call_groq_json("sys", "user", {"type": "object"}, "test_schema")
+    assert exc_len.value.status_code == 502
+    assert "token limit" in str(exc_len.value).lower()
+
+    resp_429 = Mock(status_code=429, text="rate limit")
+    monkeypatch.setattr(llm_service.requests, "post", lambda *args, **kwargs: resp_429)
+    with pytest.raises(llm_service.LLMServiceError) as exc_429:
+        llm_service._call_groq_json("sys", "user", {"type": "object"}, "test_schema")
+    assert exc_429.value.status_code == 429
+
+    resp_401 = Mock(status_code=401, text="bad key")
+    resp_401.json.return_value = {"error": {"message": "Invalid API Key"}}
+    monkeypatch.setattr(llm_service.requests, "post", lambda *args, **kwargs: resp_401)
+    with pytest.raises(llm_service.LLMServiceError) as exc_401:
+        llm_service._call_groq_json("sys", "user", {"type": "object"}, "test_schema")
+    assert exc_401.value.status_code == 502
+    assert "Invalid API Key" not in str(exc_401.value)
+
+    resp_refusal = Mock(status_code=200)
+    resp_refusal.json.return_value = {
+        "choices": [{"finish_reason": "stop", "message": {"refusal": "Policy refusal", "content": None}}]
+    }
+    monkeypatch.setattr(llm_service.requests, "post", lambda *args, **kwargs: resp_refusal)
+    with pytest.raises(llm_service.LLMServiceError) as exc_refusal:
+        llm_service._call_groq_json("sys", "user", {"type": "object"}, "test_schema")
+    assert exc_refusal.value.status_code == 502

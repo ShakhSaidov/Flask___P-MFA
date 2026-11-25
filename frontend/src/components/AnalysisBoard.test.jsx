@@ -1,4 +1,3 @@
-
 import React from "react";
 import { describe, it, expect, vi, afterEach } from "vitest";
 import {
@@ -9,12 +8,12 @@ import {
 
 import AnalysisBoard from "./AnalysisBoard.jsx";
 
-describe("AnalysisBoard clipboard handling", () => {
+describe("AnalysisBoard", () => {
   afterEach(() => {
     vi.restoreAllMocks();
   });
 
-  const makeProps = () => ({
+  const makeProps = (overrides = {}) => ({
     form: {
       title: "Test assignment",
       arene_tier: "blue",
@@ -46,6 +45,8 @@ describe("AnalysisBoard clipboard handling", () => {
     onOpenStudentPreview: vi.fn(),
 
     exportedMarkdown: "# Test Markdown",
+    exportError: "",
+    ...overrides,
   });
 
   it("copies Markdown when clipboard access succeeds", async () => {
@@ -104,5 +105,109 @@ describe("AnalysisBoard clipboard handling", () => {
         name: "Copy Markdown",
       })
     ).toBeInTheDocument();
+  });
+
+  it("flags incomplete checkpoints and blocks export and student preview", () => {
+    const props = makeProps({
+      exportedMarkdown: "",
+      analysis: {
+        misalignment_alert: {
+          status: "Review Recommended",
+          summary: "Summary",
+          specific_gaps: [],
+        },
+        factors: [],
+        proposed_checkpoints: [
+          {
+            title: "Scoping",
+            timing: "   ",
+            evidence_artifact: "Notes",
+            student_prompt: "Write a plan.",
+            reflection_question: "Why these sources?",
+          },
+        ],
+        arene_disclosure_note: "Rule",
+      },
+    });
+
+    render(<AnalysisBoard {...props} />);
+
+    expect(screen.getByRole("alert")).toHaveTextContent(
+      "Incomplete checkpoints:"
+    );
+    expect(screen.getByLabelText("When")).toHaveAttribute(
+      "aria-invalid",
+      "true"
+    );
+    expect(
+      screen.getByRole("button", { name: "Download Plan (.md)" })
+    ).toBeDisabled();
+    expect(
+      screen.getByRole("button", { name: "Test Student View →" })
+    ).toBeDisabled();
+  });
+
+  it("flags empty disclosure guidance and disables export and student preview", () => {
+    const props = makeProps({
+      exportedMarkdown: "",
+      analysis: {
+        misalignment_alert: {
+          status: "Review Recommended",
+          summary: "Summary",
+          specific_gaps: [],
+        },
+        factors: [],
+        proposed_checkpoints: [],
+        arene_disclosure_note: "   ",
+      },
+    });
+
+    render(<AnalysisBoard {...props} />);
+
+    expect(
+      screen.getByLabelText("Student AI Policy & Disclosure Draft")
+    ).toHaveAttribute("aria-invalid", "true");
+    expect(screen.getByRole("alert")).toHaveTextContent(
+      "Disclosure guidance required:"
+    );
+    expect(
+      screen.getByRole("button", { name: "Preview Markdown" })
+    ).toBeDisabled();
+    expect(
+      screen.getByRole("button", { name: "Download Plan (.md)" })
+    ).toBeDisabled();
+    expect(
+      screen.getByRole("button", { name: "Test Student View →" })
+    ).toBeDisabled();
+  });
+
+  it("renders inline export errors near the export actions", () => {
+    render(
+      <AnalysisBoard
+        {...makeProps({
+          exportedMarkdown: "",
+          exportError: "Could not export the plan.",
+        })}
+      />
+    );
+
+    expect(screen.getByRole("alert")).toHaveTextContent(
+      "Could not export the plan."
+    );
+  });
+
+  it("supports previewing Markdown without downloading", () => {
+    const onExportMarkdown = vi.fn().mockResolvedValue("# Preview");
+    render(
+      <AnalysisBoard
+        {...makeProps({ exportedMarkdown: "", onExportMarkdown })}
+      />
+    );
+
+    fireEvent.click(
+      screen.getByRole("button", { name: "Preview Markdown" })
+    );
+
+    expect(onExportMarkdown).toHaveBeenCalledWith(false);
   });
 });
