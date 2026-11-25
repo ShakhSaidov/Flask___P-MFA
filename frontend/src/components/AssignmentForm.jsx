@@ -10,6 +10,7 @@ export default function AssignmentForm({
   areneTiers,
   activeProvider,
   loading,
+  analyzeError = "",
   onSelectSample,
   onClearForm,
   onSubmit,
@@ -129,25 +130,31 @@ export default function AssignmentForm({
             />
           </div>
 
-          {loading && (
-            <div className="info-banner status-banner" role="status" aria-live="polite">
-              <span className="spinner" aria-hidden="true" />
-              <span>
-                {activeProvider === "ollama"
-                  ? "Auditing constructive alignment via local Ollama (may take up to a minute on local hardware)..."
-                  : "Auditing constructive alignment against the 6 P-MFA dimensions via Groq API (usually 5–20 seconds)..."}
-              </span>
-            </div>
-          )}
-
           <div className="row-between">
-            <span className="privacy-foot">
-              Demo only: use synthetic examples, not real student data. Emails, phone numbers, and Finnish personal IDs are masked before sending to {providerLabel}.
-            </span>
+            {loading ? (
+              <span className="status-inline" role="status" aria-live="polite">
+                <span className="spinner" aria-hidden="true" />
+                <span>
+                  {activeProvider === "ollama"
+                    ? "Auditing constructive alignment via local Ollama (may take up to a minute)..."
+                    : "Auditing constructive alignment via Groq API (usually 5–20 seconds)..."}
+                </span>
+              </span>
+            ) : (
+              <span className="privacy-foot">
+                Demo only: use synthetic examples, not real student data. Emails, phone numbers, and Finnish personal IDs are masked before sending to {providerLabel}.
+              </span>
+            )}
             <button type="submit" className="btn-primary" disabled={loading}>
               {loading ? "Analyzing Assignment..." : "Analyze Assignment →"}
             </button>
           </div>
+
+          {analyzeError && (
+            <div className="error-banner" role="alert" style={{ marginBottom: 0 }}>
+              {analyzeError}
+            </div>
+          )}
         </section>
       </fieldset>
     </form>

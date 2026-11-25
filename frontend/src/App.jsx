@@ -70,6 +70,7 @@ export default function App() {
   const [exportedMarkdown, setExportedMarkdown] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+  const [analyzeError, setAnalyzeError] = useState("");
   const [exportError, setExportError] = useState("");
   const analyzeRequestIdRef = useRef(0);
 
@@ -110,6 +111,7 @@ export default function App() {
   const goToStep = (nextStep) => {
     if (loading) return;
     setError("");
+    setAnalyzeError("");
     setExportError("");
     setStep(nextStep);
   };
@@ -124,6 +126,7 @@ export default function App() {
 
     setForm(nextForm);
     setActiveSampleId("");
+    setAnalyzeError("");
     if (coreTaskChanged) {
       setSampleStudentDraft("");
       setSampleAiDisclosure("");
@@ -151,6 +154,7 @@ export default function App() {
     setIsAnalysisStale(false);
     setExportedMarkdown("");
     setError("");
+    setAnalyzeError("");
     setExportError("");
   };
 
@@ -164,16 +168,28 @@ export default function App() {
     setIsAnalysisStale(false);
     setExportedMarkdown("");
     setError("");
+    setAnalyzeError("");
     setExportError("");
   };
 
   const handleAnalyze = async (e) => {
     e.preventDefault();
     if (loading) return;
+
+    if (
+      !form.title.trim() ||
+      !form.learning_outcomes.trim() ||
+      !form.assignment_text.trim()
+    ) {
+      setAnalyzeError("Assignment title, learning outcomes, and assignment prompt are required.");
+      return;
+    }
+
     const requestId = ++analyzeRequestIdRef.current;
     const submittedForm = { ...form };
     setLoading(true);
     setError("");
+    setAnalyzeError("");
     setExportError("");
     setExportedMarkdown("");
     try {
@@ -190,7 +206,7 @@ export default function App() {
       setStep("review");
     } catch (err) {
       if (analyzeRequestIdRef.current !== requestId) return;
-      setError(err.message || "Could not analyze the assignment.");
+      setAnalyzeError(err.message || "Could not analyze the assignment.");
     } finally {
       if (analyzeRequestIdRef.current === requestId) {
         setLoading(false);
@@ -316,6 +332,7 @@ export default function App() {
             areneTiers={areneTiers}
             activeProvider={activeProvider}
             loading={loading}
+            analyzeError={analyzeError}
             onSelectSample={handleSelectSample}
             onClearForm={handleClearForm}
             onSubmit={handleAnalyze}

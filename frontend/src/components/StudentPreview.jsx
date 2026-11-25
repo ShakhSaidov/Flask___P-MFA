@@ -36,6 +36,7 @@ export default function StudentPreview({
   };
 
   const updateActiveState = (patch) => {
+    setError("");
     setCpStates((prev) => ({
       ...prev,
       [selectedIdx]: {
@@ -79,6 +80,7 @@ export default function StudentPreview({
   const handleSubmit = async (e) => {
     e.preventDefault();
     if (loading || isAnalysisStale) return;
+
     const requiredFields = [
       "title",
       "timing",
@@ -86,16 +88,29 @@ export default function StudentPreview({
       "reflection_question",
       "evidence_artifact",
     ];
-
     const missingFields = requiredFields.filter(
       (field) =>
         typeof activeCp?.[field] !== "string" ||
         !activeCp[field].trim()
     );
-
     if (missingFields.length > 0) {
       setError(
         `Complete the checkpoint before submitting. Missing: ${missingFields.join(", ")}.`
+      );
+      return;
+    }
+
+    if (activeState.chosenFormat === "__custom__" && !activeState.customFormat.trim()) {
+      setError("Please describe your custom progress format before submitting.");
+      return;
+    }
+    if (!activeState.draft.trim()) {
+      setError("Please enter a brief progress note before checking in.");
+      return;
+    }
+    if (requiresDisclosure && !activeState.aiDisclosure.trim()) {
+      setError(
+        "Please describe how you used AI (or write 'No AI used yet') before checking in."
       );
       return;
     }
@@ -111,11 +126,11 @@ export default function StudentPreview({
           learning_outcomes: form.learning_outcomes,
           assignment_text: form.assignment_text,
           checkpoint: activeCp,
-          student_draft: activeState.draft,
+          student_draft: activeState.draft.trim(),
           chosen_evidence_format: effectiveFormat,
           arene_tier: form.arene_tier,
           custom_ai_rules: form.custom_ai_rules,
-          ai_disclosure: requiresDisclosure ? activeState.aiDisclosure : "",
+          ai_disclosure: requiresDisclosure ? activeState.aiDisclosure.trim() : "",
           disclosure_note: analysis?.arene_disclosure_note || "",
         }),
       });
@@ -315,26 +330,27 @@ export default function StudentPreview({
                     className="textarea-compact"
                     value={activeState.aiDisclosure}
                     onChange={(e) => updateActiveState({ aiDisclosure: e.target.value, result: null })}
-                    placeholder="Which AI tool did you use, and how did you verify its output?"
+                    placeholder="Which AI tool did you use and how did you verify it? (Or write 'No AI used yet')"
+                    required
                   />
                 </div>
               )}
 
-              {loading && (
-                <div className="info-banner status-banner" role="status" aria-live="polite">
-                  <span className="spinner" aria-hidden="true" />
-                  <span>
-                    {aiAllowed
-                      ? `Running Socratic check-in via ${providerLabel}...`
-                      : "Verifying Red-tier policy status..."}
-                  </span>
-                </div>
-              )}
-
               <div className="row-between">
-                <span className="privacy-foot">
-                  Demo only: do not paste real student work or personal data. Obvious IDs are masked before AI calls, but not fully anonymized.
-                </span>
+                {loading ? (
+                  <span className="status-inline" role="status" aria-live="polite">
+                    <span className="spinner" aria-hidden="true" />
+                    <span>
+                      {aiAllowed
+                        ? `Running Socratic check-in via ${providerLabel}...`
+                        : "Verifying Red-tier policy status..."}
+                    </span>
+                  </span>
+                ) : (
+                  <span className="privacy-foot">
+                    Demo only: do not paste real student work or personal data. Obvious IDs are masked before AI calls, not fully anonymized.
+                  </span>
+                )}
                 <button type="submit" className="btn-primary" disabled={loading || isAnalysisStale}>
                   {loading
                     ? "Checking..."

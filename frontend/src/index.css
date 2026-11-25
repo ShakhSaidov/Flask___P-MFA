@@ -135,6 +135,11 @@ h3,
   cursor: not-allowed;
 }
 
+.step-btn.active:disabled {
+  opacity: 1;
+  cursor: default;
+}
+
 /* Main Container */
 .container {
   max-width: 1120px;
@@ -545,6 +550,17 @@ select:disabled {
   display: flex;
   align-items: center;
   gap: 10px;
+}
+
+.status-inline {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 0.84rem;
+  font-weight: 500;
+  color: #1e40af;
+  flex: 1 1 320px;
+  min-width: 0;
 }
 
 .spinner {

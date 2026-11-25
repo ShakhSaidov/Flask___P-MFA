@@ -354,4 +354,23 @@ describe("StudentPreview", () => {
       "Report every AI prompt and verification step in your 1-page summary."
     );
   });
+
+  it("requires AI disclosure text on Blue/Yellow before calling the API", async () => {
+    render(<StudentPreview {...makeProps("yellow")} />);
+
+    fireEvent.change(screen.getByLabelText(/How You Used AI/i), {
+      target: { value: "   " },
+    });
+
+    fireEvent.submit(
+      screen.getByRole("button", { name: "Ask Coach for Feedback" }).closest("form")
+    );
+
+    expect(
+      await screen.findByText(
+        "Please describe how you used AI (or write 'No AI used yet') before checking in."
+      )
+    ).toBeInTheDocument();
+    expect(fetch).not.toHaveBeenCalled();
+  });
 });
