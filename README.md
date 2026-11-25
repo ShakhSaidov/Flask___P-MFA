@@ -41,7 +41,7 @@ Drafts three staged process milestones and a student AI disclosure rule that exp
 
 <p>
   <img src="./screenshots/03a-checkpoints.png" alt="Editable process checkpoint card" width="100%" /><br />
-  <img src="./screenshots/03b-ai-policy-disclosure.png" alt="AI policy and disclosure note for students" width="100%" />
+  <img src="./screenshots/03b-ai-policy-disclosure.png" alt="AI policy and disclosure note for students" width="100%" /><br />
   <img src="./screenshots/03c-markdown-plan-export.png" alt="Exported Markdown assessment plan preview" width="100%" />
 </p>
 
@@ -78,7 +78,7 @@ python -m venv .venv
 
 pip install -r backend/requirements.txt
 cp backend/.env.example backend/.env
-# Create a free GROP API Key and add the value to GROQ_API_KEY in backend/.env (or set LLM_PROVIDER=ollama for local inference)
+# Create a free Groq API Key and add the value to GROQ_API_KEY in backend/.env (or set LLM_PROVIDER=ollama for local inference)
 ```
 
 Start Flask from the project root (serves the prebuilt frontend from `backend/static_dist/`):
@@ -111,7 +111,7 @@ cd frontend && npm test
 
 ## Open R&D questions to explore
 
-- Do short, staged process checkpoints actually make student competence easier to spot without overloading lecturers?
+- Do short, staged process checkpoints actually make student competence easier to spot for teachers/lecturers?
 - How consistent are LLMs at catching constructive alignment gaps across different disciplines?
 - Which lightweight evidence formats (voice walkthroughs, annotated source logs, short Q&As) are optimal?
 
