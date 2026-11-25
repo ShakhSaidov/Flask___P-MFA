@@ -78,7 +78,7 @@ python -m venv .venv
 
 pip install -r backend/requirements.txt
 cp backend/.env.example backend/.env
-# Add your GROQ_API_KEY to backend/.env (or set LLM_PROVIDER=ollama for local inference)
+# Create a free GROP API Key and add the value to GROQ_API_KEY in backend/.env (or set LLM_PROVIDER=ollama for local inference)
 ```
 
 Start Flask from the project root (serves the prebuilt frontend from `backend/static_dist/`):
