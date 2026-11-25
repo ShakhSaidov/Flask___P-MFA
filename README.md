@@ -11,9 +11,9 @@ A small Flask + React R&D prototype exploring **process-oriented assignment desi
 Rather than building another Q&A chatbot or document summarizer, P-MFA Studio tackles a harder assessment problem: when generative AI can produce polished final essays or code, grading solely on a single end-of-course submission loses visibility into authentic learning.
 
 The app models a three-step workflow:
-1. **Assignment (`1. Assignment`):** Lecturers enter an assignment's learning outcomes, task prompt, and **Arene AI Traffic Light** tier (*Blue, Green, Yellow, Red*), or load one of four discipline presets.
-2. **Review (`2. Review`):** Audits constructive alignment across the six P-MFA dimensions (*Knowledge, Outputs, Application, Process Continuity, Self-Evaluation, Situated Understanding*), flags what is clearly covered vs. missing in the prompt, and drafts **3 editable checkpoints** plus an editable student AI rule for Markdown export.
-3. **Student View (`3. Student View`):** Lets users test a checkpoint check-in as a student—choosing how to evidence their work and seeing **server-enforced policy behavior** across Arene tiers (an AI Coach that won't write the deliverable on Blue/Yellow/Green, and deterministic server-side AI lockout on Red).
+1. **Assignment:** Lecturers enter an assignment's learning outcomes, task prompt, and **Arene AI Traffic Light** tier (*Blue, Green, Yellow, Red*), or load one of four discipline presets.
+2. **Review:** Audits constructive alignment across the six P-MFA dimensions (*Knowledge, Outputs, Application, Process Continuity, Self-Evaluation, Situated Understanding*), flags what is clearly covered vs. missing in the prompt, and drafts **3 editable checkpoints** plus an editable student AI rule for Markdown export.
+3. **Student View:** Lets users test a checkpoint check-in as a student—choosing how to evidence their work and seeing **server-enforced policy behavior** across Arene tiers (an AI Coach that won't write the deliverable on Blue/Yellow/Green, and deterministic server-side AI lockout on Red).
 
 ---
 
