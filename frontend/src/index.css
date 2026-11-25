@@ -546,12 +546,6 @@ select:disabled {
   font-size: 0.85rem;
 }
 
-.status-banner {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-}
-
 .status-inline {
   display: inline-flex;
   align-items: center;

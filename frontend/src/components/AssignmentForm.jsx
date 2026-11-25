@@ -142,7 +142,8 @@ export default function AssignmentForm({
               </span>
             ) : (
               <span className="privacy-foot">
-                Demo only: use synthetic examples, not real student data. Emails, phone numbers, and Finnish personal IDs are masked before sending to {providerLabel}.
+                Demo only: use synthetic data. Assignment title, outcomes, instructions, and course rules are sent to {providerLabel}.
+                Obvious email, phone, and Finnish ID patterns are best-effort masked. But, this is not full anonymisation.
               </span>
             )}
             <button type="submit" className="btn-primary" disabled={loading}>

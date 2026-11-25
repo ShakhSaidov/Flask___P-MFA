@@ -75,12 +75,12 @@ export default function App() {
   const analyzeRequestIdRef = useRef(0);
 
   useEffect(() => {
-    fetch("/api/examples")
-      .then((res) => {
-        if (!res.ok) throw new Error("Failed to load examples");
-        return res.json();
-      })
+    let cancelled = false;
+
+    requestJson("/api/examples")
       .then((data) => {
+        if (cancelled) return;
+
         setSamples(data.samples || []);
         setAreneTiers(
           data.arene_tiers && Object.keys(data.arene_tiers).length > 0
@@ -91,8 +91,9 @@ export default function App() {
         if (data.active_provider) {
           setActiveProvider(data.active_provider);
         }
-        if (data.samples && data.samples.length > 0) {
-          const first = data.samples[0];
+
+        const first = data.samples?.[0];
+        if (first) {
           setActiveSampleId(first.id);
           setForm({
             title: first.title,
@@ -105,7 +106,15 @@ export default function App() {
           setSampleAiDisclosure(first.sample_ai_disclosure || "");
         }
       })
-      .catch(() => setError("Could not load sample presets. Check that Flask is running."));
+      .catch((err) => {
+        if (!cancelled) {
+          setError(err.message || "Could not load sample presets. Check that Flask is running.");
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   const goToStep = (nextStep) => {

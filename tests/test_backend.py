@@ -561,3 +561,44 @@ def test_groq_error_branches_length_truncation_429_auth_and_refusal(monkeypatch)
     with pytest.raises(llm_service.LLMServiceError) as exc_refusal:
         llm_service._call_groq_json("sys", "user", {"type": "object"}, "test_schema")
     assert exc_refusal.value.status_code == 502
+
+def test_assignment_analysis_uses_lecturer_design_prompt(monkeypatch):
+    captured = {}
+
+    def fake_llm(system_instruction, user_prompt, schema, schema_name):
+        captured["system_instruction"] = system_instruction
+        captured["user_prompt"] = user_prompt
+        captured["schema"] = schema
+        captured["schema_name"] = schema_name
+        return _valid_raw_analysis()
+
+    monkeypatch.setattr(
+        llm_service,
+        "_call_structured_llm",
+        fake_llm,
+    )
+
+    result = llm_service.analyze_assignment(
+        title="AI in Healthcare",
+        learning_outcomes="Evaluate clinical evidence",
+        assignment_text="Submit a report with academic references.",
+        arene_tier="yellow",
+        custom_ai_rules="AI is allowed for keyword brainstorming.",
+    )
+
+    prompt = captured["system_instruction"].lower()
+
+    assert "lecturer" in prompt
+    assert "assignment" in prompt
+    assert "misalignment_alert" in prompt
+    assert "process_continuity" in prompt
+
+    # These belong to the separate student-coaching prompt.
+    assert "student_draft" not in prompt
+    assert "probing_questions" not in prompt
+
+    assert captured["schema"] is llm_service.ANALYZE_SCHEMA
+    assert captured["schema_name"] == "pmfa_analysis"
+
+    assert len(result["factors"]) == 6
+    assert len(result["proposed_checkpoints"]) == 3

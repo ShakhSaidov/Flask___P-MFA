@@ -67,7 +67,11 @@ export default function StudentPreview({
     activeState.chosenFormat === "__custom__"
       ? activeState.customFormat.trim()
       : activeState.chosenFormat;
-  const providerLabel = activeProvider === "ollama" ? "local Ollama" : "external AI";
+  const providerLabel = activeProvider === "ollama"
+      ? "local Ollama"
+      : activeProvider === "groq"
+        ? "Groq API"
+        : "configured AI provider";
 
   const handleLoadSample = () => {
     updateActiveState({
@@ -348,7 +352,12 @@ export default function StudentPreview({
                   </span>
                 ) : (
                   <span className="privacy-foot">
-                    Demo only: do not paste real student work or personal data. Obvious IDs are masked before AI calls, not fully anonymized.
+                    Demo only: use synthetic data. This check-in is sent to the Flask server and is not stored in a database by this prototype.
+                    {aiAllowed
+                      ? ` Blue, Green, and Yellow also send the note and assignment
+                          context to ${providerLabel} after best-effort masking of
+                          obvious identifiers. This is not anonymisation.`
+                      : " Red performs a server-side self-check and does not call an AI provider."}
                   </span>
                 )}
                 <button type="submit" className="btn-primary" disabled={loading || isAnalysisStale}>
