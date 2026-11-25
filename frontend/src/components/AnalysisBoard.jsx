@@ -26,6 +26,12 @@ function coverageClass(cov) {
   return "pill cov-missing";
 }
 
+function factorRowClass(cov) {
+  if (cov === "Explicitly Evidenced") return "factor-row factor-row-strong";
+  if (cov === "Implicit / Unverified") return "factor-row factor-row-partial";
+  return "factor-row factor-row-missing";
+}
+
 function isEmptyField(cp, field) {
   return typeof cp?.[field] !== "string" || !cp[field].trim();
 }
@@ -118,8 +124,8 @@ export default function AnalysisBoard({
 
       {/* 1. Alignment Summary */}
       <section className="board-section-flat">
-        <div className="row-between">
-          <div>
+        <div className="row-between row-between-top">
+          <div className="row-head-copy">
             <span className="eyebrow">
               {form.title} · Arene {form.arene_tier.toUpperCase()}
             </span>
@@ -130,7 +136,7 @@ export default function AnalysisBoard({
               Preliminary check of how well the task and deliverable evidence the learning outcomes.
             </p>
           </div>
-          <div className="btn-row">
+          <div className="btn-row card-header-side">
             <span className={`pill ${alertClass}`}>{statusLabel}</span>
             <button type="button" className="btn-secondary" onClick={onBackToSetup}>
               Edit Assignment
@@ -157,42 +163,47 @@ export default function AnalysisBoard({
           </p>
         </div>
 
-        <div className="factors-grid">
+        <div className="factors-list">
           {(analysis.factors || []).map((f, idx) => (
-            <div key={f.name || idx} className="factor-card">
-              <div className="factor-top">
-                <div className="row-between">
+            <div key={f.name || idx} className={factorRowClass(f.coverage)}>
+              <div className="factor-row-head">
+                <div className="factor-row-title">
                   <strong className="factor-name">{f.name}</strong>
                   <span className={coverageClass(f.coverage)}>
                     {COVERAGE_LABELS[f.coverage] || f.coverage}
                   </span>
                 </div>
-                {f.evidence_basis && (
-                  <p className="factor-evidence">
-                    <span className="factor-kicker">In prompt:</span> {f.evidence_basis}
-                  </p>
-                )}
+
+                <div className="factor-row-control">
+                  <label htmlFor={`override-${idx}`} className="override-label">
+                    Your rating:
+                  </label>
+                  <select
+                    id={`override-${idx}`}
+                    className="override-select"
+                    value={f.coverage}
+                    onChange={(e) => onUpdateFactorCoverage(idx, e.target.value)}
+                  >
+                    <option value="Explicitly Evidenced">Clearly Covered</option>
+                    <option value="Implicit / Unverified">Assumed / Unchecked</option>
+                    <option value="Not Captured">Missing</option>
+                  </select>
+                </div>
+              </div>
+
+              {f.evidence_basis && (
+                <p className="factor-evidence">
+                  <span className="factor-kicker">In prompt:</span> {f.evidence_basis}
+                </p>
+              )}
+
+              <div className="factor-row-cols">
                 <p className="factor-text">
                   <span className="factor-kicker">Observation:</span> {f.diagnosis}
                 </p>
                 <p className="factor-rec">
                   <span className="factor-kicker">Suggested fix:</span> {f.recommendation}
                 </p>
-              </div>
-              <div className="override-row">
-                <label htmlFor={`override-${idx}`} className="override-label">
-                  Your rating:
-                </label>
-                <select
-                  id={`override-${idx}`}
-                  className="override-select"
-                  value={f.coverage}
-                  onChange={(e) => onUpdateFactorCoverage(idx, e.target.value)}
-                >
-                  <option value="Explicitly Evidenced">Clearly Covered</option>
-                  <option value="Implicit / Unverified">Assumed / Unchecked</option>
-                  <option value="Not Captured">Missing</option>
-                </select>
               </div>
             </div>
           ))}

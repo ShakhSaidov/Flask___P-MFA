@@ -139,7 +139,7 @@ describe("StudentPreview", () => {
 
     await waitFor(() => {
       expect(
-        screen.getByText("Coach Mode · Won't Write for You")
+        screen.getByText("Coach Mode · Guidance Only")
       ).toBeInTheDocument();
     });
 
